@@ -30,6 +30,9 @@ RUN apt update \
     bc \
     jq \
     sudo \
+    python3 \
+    python3-dialog \
+    dialog \
     && apt clean
 
 # Set 'root' password.
