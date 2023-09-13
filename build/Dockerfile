@@ -2,8 +2,25 @@ FROM ubuntu:jammy
 
 ARG DEBIAN_FRONTEND=noninteractive
 
-RUN apt update \
-    && apt install -y --no-install-recommends \
+## Add fepitre's PPA repository.
+#COPY ppa:fepitre-golem-nvidia-kernel.list /etc/apt/sources.list.d
+#COPY ppa:fepitre-golem-nvidia-kernel.gpg /etc/apt/trusted.gpg.d
+
+# Add fepitre's GOLEM repository
+COPY 473F57D3A9534D53F0128E9DFF0244C9D7E28146.asc /etc/apt/trusted.gpg.d/golem.asc
+RUN bash -c 'echo deb http://mirror.notset.fr/golem/repo/ jammy main > /etc/apt/sources.list.d/golem.list'
+
+# Accept GOLEM terms for install then Wizard will manage it
+RUN bash -c 'echo golem golem/terms/subsidy-01 string yes | debconf-set-selections'
+
+RUN apt update
+
+RUN apt install -y --no-install-recommends \
+    golem-provider \
+    ya-runtime-vm \
+    ya-runtime-wasi-cli
+
+RUN apt install -y --no-install-recommends \
     linux-image-generic \
     live-boot \
     systemd \
@@ -32,8 +49,9 @@ RUN apt update \
     sudo \
     python3 \
     python3-dialog \
-    dialog \
-    && apt clean
+    dialog
+
+RUN apt clean
 
 # Set 'root' password.
 RUN bash -c "echo -e 'root\nroot' | passwd"
@@ -70,26 +88,15 @@ USER golem
 # FIXME: use packaging to install Golem's content, NVIDIA runtime and configuration scripts.
 #
 
-## Add fepitre's PPA repository.
-#COPY ppa:fepitre-golem-nvidia-kernel.list /etc/apt/sources.list.d
-#COPY ppa:fepitre-golem-nvidia-kernel.gpg /etc/apt/trusted.gpg.d
+# Configure Golem runtime on boot
+COPY --chown=golem:golem configure-runtime.sh /tmp
+RUN bash /tmp/configure-runtime.sh
 
 # From https://github.com/golemfactory/ya-runtime-vm-nvidia/wiki/Development-instruction-for-ITL#installing-and-verifying
-
-# Install Golem and default runtimes.
-COPY --chown=golem:golem as-provider.sh /tmp/
-RUN PATH="$HOME/.local/bin:$PATH" \
-    BATCH_MODE=yes \
-    GOLEM_ACCEPT_TOS=yes \
-    YA_INSTALLER_CORE=pre-rel-v0.13.0-rc11 \
-    	bash /tmp/as-provider.sh
 
 # Install Golem NVIDIA runtime.
 COPY --chown=golem:golem install-runtime-nvidia.sh /tmp/
 RUN PATH="$HOME/.local/bin:$PATH" bash /tmp/install-runtime-nvidia.sh
-
-# Configure Golem runtime on boot
-COPY --chown=golem:golem configure-runtime.sh /home/golem/
 
 # Configure Golem NVIDIA on boot
 COPY --chown=golem:golem configure-runtime-nvidia.sh /home/golem/
