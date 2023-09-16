@@ -39,6 +39,7 @@ check_command_existence "docker"
 check_command_existence "jq"
 
 image_name="$1"
+mkdir -p "$(realpath "$2")"
 tmp_directory="$(mktemp -p "$(realpath "$2")" -d)"
 output_directory="$(realpath "$3")"
 
