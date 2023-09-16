@@ -24,10 +24,10 @@ cp "${WORKDIR}/rootfs/boot/vmlinuz-"* "${WORKDIR}/content/live/vmlinuz"
 cp "${WORKDIR}/rootfs/boot/initrd.img-"* "${WORKDIR}/content/live/initrd"
 
 # Create ISOLINUX boot menu
-cp "${LOCALDIR}/isolinux.cfg" "${WORKDIR}/content/isolinux/"
+cp "${LOCALDIR}/live/isolinux.cfg" "${WORKDIR}/content/isolinux/"
 
 # Create GRUB boot menu
-cp "${LOCALDIR}/grub.cfg" "${WORKDIR}/content/boot/grub/"
+cp "${LOCALDIR}/live/grub.cfg" "${WORKDIR}/content/boot/grub/"
 
 # Copy GRUB config to the EFI BOOT directory
 cp "${WORKDIR}/content/boot/grub/grub.cfg" "${WORKDIR}/content/EFI/BOOT/"
@@ -46,7 +46,7 @@ grub-mkstandalone -O x86_64-efi \
     --themes="" \
     --fonts="" \
     --output="${WORKDIR}/content/EFI/BOOT/BOOTx64.EFI" \
-    "boot/grub/grub.cfg=${LOCALDIR}/grub-embed.cfg"
+    "boot/grub/grub.cfg=${LOCALDIR}/live/grub-embed.cfg"
 
 # Create UEFI boot disk image
 dd if=/dev/zero of="${WORKDIR}/content/efiboot.img" bs=1M count=20

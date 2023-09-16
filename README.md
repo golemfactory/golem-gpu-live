@@ -25,7 +25,7 @@ sudo apt install \
 ### Create `rootfs`
 
 ```bash
-$ sudo docker build -t golem-gpu-live -f build/Dockerfile build
+$ sudo docker rootfs -t golem-gpu-live -f rootfs/Dockerfile rootfs
 $ sudo ./get-merged-rootfs.sh golem-gpu-live /path/to/tmp/dir /path/to/work/dir
 ```
 
