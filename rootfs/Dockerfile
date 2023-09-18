@@ -42,12 +42,6 @@ RUN apt install -y --no-install-recommends \
     python3-dialog \
     dialog
 
-# Add fepitre's PPA repository.
-COPY ppa:fepitre-golem-nvidia-kernel.list /etc/apt/sources.list.d
-COPY ppa:fepitre-golem-nvidia-kernel.asc /etc/apt/trusted.gpg.d
-
-RUN apt update
-
 RUN apt install -y --no-install-recommends \
     golem-provider \
     golem-nvidia-kernel \
