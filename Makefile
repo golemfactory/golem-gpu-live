@@ -9,7 +9,7 @@ image:
 	sudo docker build --no-cache -t golem-gpu-live -f $(LOCAL_DIR)/rootfs/Dockerfile rootfs
 	sudo ./get-merged-rootfs.sh golem-gpu-live $(TMP_DIR) $(WORK_DIR)
 
-iso: image
+iso:
 	sudo ./create-live-iso.sh $(WORK_DIR)
 
 clean:

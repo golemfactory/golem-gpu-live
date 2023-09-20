@@ -5,22 +5,18 @@
 # From https://github.com/golemfactory/ya-runtime-vm-nvidia/blob/main/install.sh
 #
 
-#
-# WIP: Packaging will be used to configure provider
-#
-
 set -eux
 
-YA_INSTALLER_RUNTIME_VER=${YA_INSTALLER_RUNTIME_VER:-v0.1.2}
-YA_INSTALLER_RUNTIME_REPO_NAME="ya-runtime-vm"
-YA_INSTALLER_RUNTIME_ID=${YA_INSTALLER_RUNTIME_ID:-vm-nvidia}
-YA_INSTALLER_RUNTIME_DESCRIPTOR="${YA_INSTALLER_RUNTIME_REPO_NAME}.json"
+# Fix env variables for golemsp, ya-provider, etc.
+EXE_UNIT_PATH="$HOME/.local/lib/yagna/plugins/*.json"
+DATA_DIR="$HOME/.local/share/ya-provider"
 
-YA_RUNTIME_VM_PCI_DEVICE=${YA_RUNTIME_VM_PCI_DEVICE:-NULL}
+export EXE_UNIT_PATH DATA_DIR
+
+YA_INSTALLER_RUNTIME_ID="vm"
+YA_RUNTIME_VM_PCI_DEVICE=${YA_RUNTIME_VM_PCI_DEVICE:-0000:01:00.0}
 YA_INSTALLER_GLM_PER_HOUR=${YA_INSTALLER_GLM_PER_HOUR:-0.025}
 YA_INSTALLER_INIT_PRICE=${YA_INSTALLER_INIT_PRICE:-0}
-
-YA_INSTALLER_LIB=/usr/lib/yagna
 
 preset_exists() {
     provider_entry_exists "preset"
@@ -76,7 +72,7 @@ configure_preset() {
 }
 
 main() {
-    configure_runtime "$YA_INSTALLER_LIB/plugins/ya-runtime-vm.json"
+    configure_runtime "$HOME/.local/lib/yagna/plugins/ya-runtime-vm.json"
     configure_preset
 }
 

@@ -81,15 +81,18 @@ RUN /lib/systemd/systemd-sysv-install enable ssh
 # Configure as Golem user
 USER golem
 
-# From https://github.com/golemfactory/ya-runtime-vm-nvidia/wiki/Development-instruction-for-ITL#installing-and-verifying
-# FIXME: use packaging to install Golem's content, NVIDIA runtime and configuration scripts.
+RUN mkdir -p /home/golem/.local/lib/yagna/plugins && \
+    cp -r /usr/lib/yagna/plugins/*.json /home/golem/.local/lib/yagna/plugins
 
-# Configure Golem runtime on boot
+# From https://github.com/golemfactory/ya-runtime-vm-nvidia/wiki/Development-instruction-for-ITL#installing-and-verifying
+
+# Configure Golem runtime
 COPY --chown=golem:golem configure-runtime.sh /tmp
 RUN bash /tmp/configure-runtime.sh
 
-# Configure Golem NVIDIA on boot
-COPY --chown=golem:golem configure-runtime-nvidia.sh /home/golem/
+# Configure Golem NVIDIA
+COPY --chown=golem:golem configure-runtime-nvidia.sh /tmp
+RUN bash /tmp/configure-runtime-nvidia.sh
 
 # Copy dev/debug script for configuring Golem and attaching GPU
 COPY --chown=golem:golem attach.sh /home/golem/
