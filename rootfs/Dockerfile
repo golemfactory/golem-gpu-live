@@ -87,12 +87,12 @@ RUN mkdir -p /home/golem/.local/lib/yagna/plugins && \
 # From https://github.com/golemfactory/ya-runtime-vm-nvidia/wiki/Development-instruction-for-ITL#installing-and-verifying
 
 # Configure Golem runtime
+# FIXME: This is temporary until ressource content is available as DEB.
 COPY --chown=golem:golem configure-runtime.sh /tmp
 RUN bash /tmp/configure-runtime.sh
 
-# Configure Golem NVIDIA
-COPY --chown=golem:golem configure-runtime-nvidia.sh /tmp
-RUN bash /tmp/configure-runtime-nvidia.sh
+# Copy GOLEM Wizard
+COPY --chown=golem:golem wizard.py /home/golem
 
 # Copy dev/debug script for configuring Golem and attaching GPU
 COPY --chown=golem:golem attach.sh /home/golem/
