@@ -40,7 +40,8 @@ RUN apt install -y --no-install-recommends \
     sudo \
     python3 \
     python3-dialog \
-    dialog
+    dialog \
+    qemu-kvm
 
 RUN apt install -y --no-install-recommends \
     golem-provider \
@@ -78,21 +79,27 @@ RUN bash -c 'echo > /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.c
 # Enable SSH on boot
 RUN /lib/systemd/systemd-sysv-install enable ssh
 
+# FIXME: This temporary until we update QEMU
+RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt \
+       /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt.orig
+RUN ln -s /usr/bin/qemu-system-x86_64 /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt
+
+# FIXME: This is temporary until we allow multiple -initrd to vmrt
+RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/initramfs.cpio.gz \
+       /usr/lib/yagna/plugins/ya-runtime-vm/runtime/initramfs.cpio.gz.orig
+
+RUN bash -c 'cat /usr/lib/yagna/plugins/ya-runtime-vm/runtime/modules.cpio.gz >> /usr/lib/yagna/plugins/ya-runtime-vm/runtime/initramfs.cpio.gz'
+
 # Configure as Golem user
 USER golem
 
 RUN mkdir -p /home/golem/.local/lib/yagna/plugins && \
     cp -r /usr/lib/yagna/plugins/*.json /home/golem/.local/lib/yagna/plugins
 
-# From https://github.com/golemfactory/ya-runtime-vm-nvidia/wiki/Development-instruction-for-ITL#installing-and-verifying
-
-# Configure Golem runtime
 # FIXME: This is temporary until ressource content is available as DEB.
+# Configure Golem runtime
 COPY --chown=golem:golem configure-runtime.sh /tmp
 RUN bash /tmp/configure-runtime.sh
 
 # Copy GOLEM Wizard
 COPY --chown=golem:golem wizard.py /home/golem
-
-# Copy dev/debug script for configuring Golem and attaching GPU
-COPY --chown=golem:golem attach.sh /home/golem/

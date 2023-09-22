@@ -125,25 +125,25 @@ def select_gpu_compatible(allow_pci_bridge=True):
         # 5. PCI bridge device being parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
-                not has_only_allowed_devices(parsed_devices, devices)
-                or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-                or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-                or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-                or (
+            not has_only_allowed_devices(parsed_devices, devices)
+            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
+            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
+            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
+            or (
                 pci_bridge_device
                 and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
-        )
-                or (
+            )
+            or (
                 pci_audio_device
                 and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-        )
+            )
         ):
             bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
         vfio_devices = (
-                parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
+            parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
         )
         vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
 
@@ -152,6 +152,7 @@ def select_gpu_compatible(allow_pci_bridge=True):
                 "description": get_pci_full_string_description_from_slot(gpu_vga_slot),
                 "vfio": vfio,
                 "slot": gpu_vga_slot,
+                "devices": vfio_devices,
             }
         )
 
@@ -186,7 +187,9 @@ def get_partition_by_partlabel(partlabel):
 
 def get_env():
     env = os.environ.copy()
-    env["EXE_UNIT_PATH"] = str(Path("~").expanduser() / ".local/lib/yagna/plugins/*.json")
+    env["EXE_UNIT_PATH"] = str(
+        Path("~").expanduser() / ".local/lib/yagna/plugins/*.json"
+    )
     env["DATA_DIR"] = str(Path("~").expanduser() / ".local/share/ya-provider")
     return env
 
@@ -227,6 +230,21 @@ def configure_preset(runtime_id, duration_price, cpu_price, init_price):
 
     activate_cmd = ["ya-provider", "preset", "activate", runtime_id]
     subprocess.run(activate_cmd, check=True, env=env)
+
+
+def bind_vfio(devices):
+    for dev in devices:
+        driver_override_path = f"/sys/bus/pci/devices/{dev}/driver_override"
+        bind_path = "/sys/bus/pci/drivers/vfio-pci/bind"
+        subprocess.run(
+            ["sudo", "bash", "-c", f'echo "vfio-pci" > "{driver_override_path}"'],
+            check=True,
+        )
+        subprocess.run(
+            ["sudo", "bash", "-c", f'echo "{dev}" > "{bind_path}"'], check=True
+        )
+
+    subprocess.run(["modprobe", "-i", "vfio-pci"], check=True)
 
 
 class WizardDialog:
@@ -422,6 +440,13 @@ def main():
         )
     except subprocess.CalledProcessError as e:
         raise WizardError(f"Failed to configure preset: {str(e)}")
+
+    #
+    # VFIO
+    #
+
+    if d.yesno("Make devices available for passthrough?"):
+        bind_vfio(selected_gpu["devices"])
 
 
 if __name__ == "__main__":
