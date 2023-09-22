@@ -41,7 +41,10 @@ RUN apt install -y --no-install-recommends \
     python3 \
     python3-dialog \
     dialog \
-    qemu-kvm
+    qemu-kvm \
+    musl-tools \
+    make \
+    wget
 
 RUN apt install -y --no-install-recommends \
     golem-provider \
@@ -84,11 +87,9 @@ RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt \
        /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt.orig
 RUN ln -s /usr/bin/qemu-system-x86_64 /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt
 
-# FIXME: This is temporary until we allow multiple -initrd to vmrt
-RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/initramfs.cpio.gz \
-       /usr/lib/yagna/plugins/ya-runtime-vm/runtime/initramfs.cpio.gz.orig
-
-RUN bash -c 'cat /usr/lib/yagna/plugins/ya-runtime-vm/runtime/modules.cpio.gz >> /usr/lib/yagna/plugins/ya-runtime-vm/runtime/initramfs.cpio.gz'
+# FIXME: This is temporary until we allow multiple -initrd to vmrt and update devtmpfs mount options in init
+COPY --chown=golem:golem repack-initramfs.sh /tmp
+RUN bash /tmp/repack-initramfs.sh
 
 # Configure as Golem user
 USER golem
