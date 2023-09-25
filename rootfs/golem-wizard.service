@@ -1,0 +1,15 @@
+[Unit]
+Description=GOLEM Initial Wizard Boot
+Before=getty@tty1.service
+DefaultDependencies=no
+ConditionKernelCommandLine=!headless
+
+[Service]
+ExecStart=/usr/local/bin/golemwz
+StandardInput=tty
+TTYPath=/dev/tty1
+User=golem
+Group=golem
+
+[Install]
+WantedBy=multi-user.target

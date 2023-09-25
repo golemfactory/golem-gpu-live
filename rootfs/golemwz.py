@@ -150,25 +150,25 @@ def select_gpu_compatible(allow_pci_bridge=True):
         # 5. PCI bridge device being parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
-                not has_only_allowed_devices(parsed_devices, devices)
-                or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-                or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-                or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-                or (
+            not has_only_allowed_devices(parsed_devices, devices)
+            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
+            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
+            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
+            or (
                 pci_bridge_device
                 and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
-        )
-                or (
+            )
+            or (
                 pci_audio_device
                 and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-        )
+            )
         ):
             bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
         vfio_devices = (
-                parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
+            parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
         )
         vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
 
@@ -432,12 +432,39 @@ def parse_args():
         default=False,
         help="Attach devices to VFIO.",
     )
+    parser.add_argument(
+        "--no-run-golemsp",
+        action="store_true",
+        default=False,
+        help="Run GolemSP.",
+    )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
     d = WizardDialog()
+
+    #
+    # STORAGE
+    #
+
+    if not args.storage_partition:
+        default_partition = get_partition_by_partlabel("GOLEM Storage")
+        storage_partition = d.inputbox(
+            "Storage partition selection",
+            init=default_partition,
+        )
+        if not storage_partition:
+            if not d.yesno(
+                "No persistent storage defined. Would you like to continue?"
+            ):
+                raise WizardError("No persistent storage defined.")
+    else:
+        storage_partition = args.storage
+
+    if storage_partition and storage_partition != "/notset":
+        configure_storage(storage_partition)
 
     #
     # GLM related values
@@ -491,25 +518,6 @@ def main():
         selected_gpu = {"slot": args.gpu_pci_slot, "vfio": args.vfio_devices}
 
     #
-    # STORAGE
-    #
-
-    if not args.storage_partition:
-        default_partition = get_partition_by_partlabel("GOLEM Storage")
-        storage_partition = d.inputbox(
-            "Storage partition selection",
-            init=default_partition,
-        )
-        if not storage_partition:
-            if not d.yesno("No persistent storage defined. Would you like to continue?"):
-                raise WizardError("No persistent storage defined.")
-    else:
-        storage_partition = args.storage
-
-    if storage_partition and storage_partition != "/notset":
-        configure_storage(storage_partition)
-
-    #
     # CONFIGURE RUNTIME
     #
 
@@ -552,7 +560,7 @@ def main():
             init_price=glm_init_price,
         )
     except subprocess.CalledProcessError as e:
-        raise WizardError(f"Failed to configure preset: {str(e)}")
+        raise WizardError(f"Failed to configure preset: {str(e)}.")
 
     #
     # VFIO
@@ -563,8 +571,19 @@ def main():
             bind_vfio(selected_gpu["devices"])
         except subprocess.CalledProcessError as e:
             raise WizardError(
-                f"Failed to attach devices to VFIO. Already bound? ({str(e)})"
+                f"Failed to attach devices to VFIO: {str(e)}. Already bound?"
             )
+
+    #
+    # GolemSP
+    #
+
+    if not args.no_run_golemsp:
+        try:
+            golemsp_cmd = ["golemsp", "run"]
+            subprocess.run(golemsp_cmd, check=True, env=get_env())
+        except subprocess.CalledProcessError as e:
+            raise WizardError(f"Failed to run GolemSP: {str(e)}.")
 
 
 if __name__ == "__main__":

@@ -91,8 +91,10 @@ RUN ln -s /usr/bin/qemu-system-x86_64 /usr/lib/yagna/plugins/ya-runtime-vm/runti
 COPY --chown=golem:golem repack-initramfs.sh /tmp
 RUN bash /tmp/repack-initramfs.sh
 
-# Copy GOLEM Wizard
+# Copy GOLEM Wizard and Systemd service
 COPY golemwz.py /usr/local/bin/golemwz
+COPY golem-wizard.service /etc/systemd/system
+RUN ln -s /etc/systemd/system/golem-wizard.service /etc/systemd/system/multi-user.target.wants
 
 # Configure as Golem user
 USER golem
