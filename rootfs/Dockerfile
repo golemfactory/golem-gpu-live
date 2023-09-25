@@ -94,13 +94,9 @@ RUN bash /tmp/repack-initramfs.sh
 # Configure as Golem user
 USER golem
 
-RUN mkdir -p /home/golem/.local/lib/yagna/plugins && \
-    cp -r /usr/lib/yagna/plugins/*.json /home/golem/.local/lib/yagna/plugins
-
 # FIXME: This is temporary until ressource content is available as DEB.
-# Configure Golem runtime
-COPY --chown=golem:golem configure-runtime.sh /tmp
-RUN bash /tmp/configure-runtime.sh
+RUN mkdir /home/golem/resources_dir
+RUN bash -c "curl --proto '=https' --silent --show-error --fail --location https://github.com/golemfactory/ya-installer-resources/releases/latest/download/resources.tar.gz --output - | tar -C /home/golem/resources_dir -xz -f -"
 
 # Copy GOLEM Wizard
 COPY --chown=golem:golem wizard.py /home/golem

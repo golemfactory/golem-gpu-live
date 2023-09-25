@@ -4,10 +4,12 @@ import glob
 import locale
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import re
 import json
+import traceback
 
 from dialog import Dialog
 from textwrap import wrap
@@ -24,6 +26,29 @@ logger = logging.getLogger(__name__)
 
 class WizardError(Exception):
     pass
+
+
+def is_mount_needed(directory, expected_device_path):
+    if not os.path.ismount(directory):
+        return True
+    try:
+        major, minor = (
+            os.major(os.stat(directory).st_dev),
+            os.minor(os.stat(directory).st_dev),
+        )
+
+        expected_major, expected_minor = (
+            os.major(os.stat(expected_device_path).st_rdev),
+            os.minor(os.stat(expected_device_path).st_rdev),
+        )
+
+        if (major, minor) != (expected_major, expected_minor):
+            raise WizardError(
+                f"The mount point for '{directory}' does not have the expected source device '{expected_device_path}'."
+            )
+        return False
+    except (FileNotFoundError, TypeError) as e:
+        raise WizardError(str(e)) from e
 
 
 def get_iommu_groups():
@@ -185,12 +210,46 @@ def get_partition_by_partlabel(partlabel):
     return ""
 
 
+def fix_paths(runtime_files_dir):
+    for runtime_json in glob.glob(str(runtime_files_dir) + "/ya-*.json"):
+        runtime_json_path = Path(runtime_json).resolve()
+        runtime_content = json.loads(runtime_json_path.read_text())
+        runtime_content[0]["supervisor-path"] = str(
+            Path("/usr/lib/yagna/plugins").joinpath(
+                Path(runtime_content[0]["supervisor-path"])
+            )
+        )
+        runtime_content[0]["runtime-path"] = str(
+            Path("/usr/lib/yagna/plugins").joinpath(
+                Path(runtime_content[0]["runtime-path"])
+            )
+        )
+        runtime_json_path.write_text(json.dumps(runtime_content, indent=4))
+
+
+def configure_storage(storage_partition):
+    if not os.path.exists(storage_partition):
+        raise WizardError("Invalid storage provided.")
+
+    mount_point = Path("~").expanduser() / ".local"
+
+    if not is_mount_needed(mount_point, storage_partition):
+        return
+
+    mount_cmd = ["sudo", "mount", storage_partition, str(mount_point)]
+    subprocess.run(mount_cmd, check=True)
+
+    permissions_cmd = ["sudo", "chown", "-R", "golem:golem", str(mount_point)]
+    subprocess.run(permissions_cmd, check=True)
+
+
 def get_env():
     env = os.environ.copy()
     env["EXE_UNIT_PATH"] = str(
         Path("~").expanduser() / ".local/lib/yagna/plugins/*.json"
     )
     env["DATA_DIR"] = str(Path("~").expanduser() / ".local/share/ya-provider")
+    env["RUST_LOG"] = "error"
     return env
 
 
@@ -210,8 +269,34 @@ def preset_exists(runtime_id):
     return provider_entry_exists("preset", runtime_id)
 
 
+def configure_runtime(runtime_path, selected_gpu):
+    runtime_content = json.loads(runtime_path.read_text())
+    runtime_gpu_arg = f"--runtime-arg=--pci-device={selected_gpu['slot']}"
+    runtime_content[0].setdefault("extra-args", [])
+    if not runtime_gpu_arg in runtime_content[0]["extra-args"]:
+        runtime_content[0]["extra-args"].append(
+            f"--runtime-arg=--pci-device={selected_gpu['slot']}"
+        )
+    runtime_path.write_text(json.dumps(runtime_content, indent=4))
+
+
 def configure_preset(runtime_id, duration_price, cpu_price, init_price):
     env = get_env()
+
+    golemsp_setup_cmd = ["golemsp", "setup", "--no-interactive"]
+    subprocess.run(golemsp_setup_cmd, check=True, env=env)
+
+    pre_install_cmd = ["ya-provider", "pre-install"]
+    subprocess.run(pre_install_cmd, check=True, env=env)
+
+    golemsp_manifest_bundle_cmd = [
+        "golemsp",
+        "manifest-bundle",
+        "add",
+        "/home/golem/resources_dir",
+    ]
+    subprocess.run(golemsp_manifest_bundle_cmd, check=True, env=env)
+
     pricing_cmd = [
         "--pricing",
         "linear",
@@ -313,7 +398,7 @@ class WizardDialog:
 
 def parse_args():
     parser = argparse.ArgumentParser()
-
+    parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument(
         "--relax-gpu-isolation",
         action="store_true",
@@ -386,46 +471,39 @@ def main():
     if not storage_partition:
         raise WizardError("No persistent storage defined.")
 
+    configure_storage(storage_partition)
+
     #
     # CONFIGURE RUNTIME
     #
 
+    # Copy missing runtime JSONs. We assume that GOLEM bins will update them if they exist.
+    plugins_dir = Path("~").expanduser() / ".local/lib/yagna/plugins"
+    plugins_dir.mkdir(parents=True, exist_ok=True)
+    print(plugins_dir)
+    for runtime_json in Path("/usr/lib/yagna/plugins/").glob("ya-*.json"):
+        if not (plugins_dir / runtime_json.name).exists():
+            print(runtime_json)
+            shutil.copy2(runtime_json, plugins_dir)
+
     runtime_path = (
-        (Path("~") / ".local/lib/yagna/plugins/ya-runtime-vm.json")
+        (Path("~").expanduser() / ".local/lib/yagna/plugins/ya-runtime-vm.json")
         .expanduser()
         .resolve()
     )
     if not runtime_path:
         raise WizardError(f"Cannot find runtime configuration file '{runtime_path}'.")
 
-    runtime_content = json.loads(runtime_path.read_text())
-    runtime_gpu_arg = f"--runtime-arg=--pci-device={selected_gpu['slot']}"
-    runtime_content[0].setdefault("extra-args", [])
-    if not runtime_gpu_arg in runtime_content[0]["extra-args"]:
-        runtime_content[0]["extra-args"].append(
-            f"--runtime-arg=--pci-device={selected_gpu['slot']}"
-        )
-    runtime_path.write_text(json.dumps(runtime_content, indent=4))
+    configure_runtime(runtime_path, selected_gpu)
 
     #
     # FIX SUPERVISOR AND RUNTIME PATHS
     #
 
-    runtime_files_dir = (Path("~") / ".local/lib/yagna/plugins/").expanduser().resolve()
-    for runtime_json in glob.glob(str(runtime_files_dir) + "/ya-*.json"):
-        runtime_json_path = Path(runtime_json).resolve()
-        runtime_content = json.loads(runtime_json_path.read_text())
-        runtime_content[0]["supervisor-path"] = str(
-            Path("/usr/lib/yagna/plugins").joinpath(
-                Path(runtime_content[0]["supervisor-path"])
-            )
-        )
-        runtime_content[0]["runtime-path"] = str(
-            Path("/usr/lib/yagna/plugins").joinpath(
-                Path(runtime_content[0]["runtime-path"])
-            )
-        )
-        runtime_json_path.write_text(json.dumps(runtime_content, indent=4))
+    runtime_files_dir = (
+        (Path("~").expanduser() / ".local/lib/yagna/plugins/").expanduser().resolve()
+    )
+    fix_paths(runtime_files_dir)
 
     #
     # CONFIGURE PRESET
@@ -453,5 +531,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(str(e))
+        print(traceback.print_exception(e))
         sys.exit(1)
