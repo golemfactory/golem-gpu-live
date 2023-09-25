@@ -91,12 +91,12 @@ RUN ln -s /usr/bin/qemu-system-x86_64 /usr/lib/yagna/plugins/ya-runtime-vm/runti
 COPY --chown=golem:golem repack-initramfs.sh /tmp
 RUN bash /tmp/repack-initramfs.sh
 
+# Copy GOLEM Wizard
+COPY golemwz.py /usr/local/bin/golemwz
+
 # Configure as Golem user
 USER golem
 
 # FIXME: This is temporary until ressource content is available as DEB.
 RUN mkdir /home/golem/resources_dir
 RUN bash -c "curl --proto '=https' --silent --show-error --fail --location https://github.com/golemfactory/ya-installer-resources/releases/latest/download/resources.tar.gz --output - | tar -C /home/golem/resources_dir -xz -f -"
-
-# Copy GOLEM Wizard
-COPY --chown=golem:golem wizard.py /home/golem
