@@ -150,25 +150,25 @@ def select_gpu_compatible(allow_pci_bridge=True):
         # 5. PCI bridge device being parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
-            not has_only_allowed_devices(parsed_devices, devices)
-            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-            or (
+                not has_only_allowed_devices(parsed_devices, devices)
+                or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
+                or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
+                or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
+                or (
                 pci_bridge_device
                 and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
-            )
-            or (
+        )
+                or (
                 pci_audio_device
                 and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-            )
+        )
         ):
             bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
         vfio_devices = (
-            parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
+                parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
         )
         vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
 
@@ -235,6 +235,8 @@ def configure_storage(storage_partition):
 
     if not is_mount_needed(mount_point, storage_partition):
         return
+
+    mount_point.mkdir(exist_ok=True)
 
     mount_cmd = ["sudo", "mount", storage_partition, str(mount_point)]
     subprocess.run(mount_cmd, check=True)
@@ -405,7 +407,31 @@ def parse_args():
         default=False,
         help="Relax GPU isolation. For example, allow PCI bridge on which the GPU is connected in the same IOMMU group.",
     )
-
+    parser.add_argument(
+        "--glm-per-hour", default=None, help="Recommended default value is 0.25."
+    )
+    parser.add_argument("--init-price", default=None, help="For testing set it to 0.")
+    parser.add_argument(
+        "--gpu-pci-slot",
+        default=None,
+        help="GPU PCI slot ID. For example, '0000:01:00.1'.",
+    )
+    parser.add_argument(
+        "--vfio-devices",
+        default=None,
+        help="Comma separated list of devices IDs to assign to VFIO. For example, '10de:2544,10de:228e'.",
+    )
+    parser.add_argument(
+        "--storage-partition",
+        default=None,
+        help="Device partition to use for persistent storage. Using '/notset' allows to skip storage mount.",
+    )
+    parser.add_argument(
+        "--passthrough",
+        action="store_true",
+        default=False,
+        help="Attach devices to VFIO.",
+    )
     return parser.parse_args()
 
 
@@ -417,8 +443,8 @@ def main():
     # GLM related values
     #
 
-    glm_per_hour = d.inputbox("GLM per hour:", init="0.25")
-    glm_init_price = d.inputbox("Init price:", init="0")
+    glm_per_hour = args.glm_per_hour or d.inputbox("GLM per hour:", init="0.25")
+    glm_init_price = args.init_price or d.inputbox("Init price:", init="0")
     try:
         cpu_price = float(glm_per_hour) / 3600.0
         duration_price = cpu_price / 5.0
@@ -429,49 +455,59 @@ def main():
     # GPU
     #
 
-    gpu_list, bad_isolation_groups = select_gpu_compatible(
-        allow_pci_bridge=args.relax_gpu_isolation
-    )
-    if not gpu_list:
-        if bad_isolation_groups:
-            for iommu_group in bad_isolation_groups:
-                devices = bad_isolation_groups.get(iommu_group, [])
-                if devices:
-                    msg = f"IOMMU Group '{iommu_group}' has bad isolation:\n\n"
-                    for device in devices:
-                        msg += "  " + device + "\n"
-                    d.msgbox(msg, width=640)
+    if not args.gpu_pci_slot and not args.vfio_devices:
+        gpu_list, bad_isolation_groups = select_gpu_compatible(
+            allow_pci_bridge=args.relax_gpu_isolation
+        )
+        if not gpu_list:
+            if bad_isolation_groups:
+                for iommu_group in bad_isolation_groups:
+                    devices = bad_isolation_groups.get(iommu_group, [])
+                    if devices:
+                        msg = f"IOMMU Group '{iommu_group}' has bad isolation:\n\n"
+                        for device in devices:
+                            msg += "  " + device + "\n"
+                        d.msgbox(msg, width=640)
 
-        raise WizardError("No compatible GPU available.")
+            raise WizardError("No compatible GPU available.")
 
-    gpu_choices = [(gpu["description"], "") for gpu in gpu_list]
-    code, gpu_tag = d.menu("Select a GPU:", choices=gpu_choices)
+        gpu_choices = [(gpu["description"], "") for gpu in gpu_list]
+        code, gpu_tag = d.menu("Select a GPU:", choices=gpu_choices)
 
-    selected_gpu = None
-    for gpu in gpu_list:
-        if gpu["description"] == gpu_tag:
-            selected_gpu = gpu
-            break
+        selected_gpu = None
+        for gpu in gpu_list:
+            if gpu["description"] == gpu_tag:
+                selected_gpu = gpu
+                break
 
-    if selected_gpu:
-        d.msgbox(f"Selected GPU: {selected_gpu['slot']} (VFIO: {selected_gpu['vfio']})")
+        if selected_gpu:
+            d.msgbox(
+                f"Selected GPU: {selected_gpu['slot']} (VFIO: {selected_gpu['vfio']})"
+            )
 
-    if not code or not selected_gpu:
-        raise WizardError("Invalid GPU selection.")
+        if not code or not selected_gpu:
+            raise WizardError("Invalid GPU selection.")
+    else:
+        selected_gpu = {"slot": args.gpu_pci_slot, "vfio": args.vfio_devices}
 
     #
     # STORAGE
     #
 
-    default_partition = get_partition_by_partlabel("GOLEM Storage")
-    storage_partition = d.inputbox(
-        "Storage partition selection",
-        init=default_partition,
-    )
-    if not storage_partition:
-        raise WizardError("No persistent storage defined.")
+    if not args.storage_partition:
+        default_partition = get_partition_by_partlabel("GOLEM Storage")
+        storage_partition = d.inputbox(
+            "Storage partition selection",
+            init=default_partition,
+        )
+        if not storage_partition:
+            if not d.yesno("No persistent storage defined. Would you like to continue?"):
+                raise WizardError("No persistent storage defined.")
+    else:
+        storage_partition = args.storage
 
-    configure_storage(storage_partition)
+    if storage_partition and storage_partition != "/notset":
+        configure_storage(storage_partition)
 
     #
     # CONFIGURE RUNTIME
@@ -480,10 +516,9 @@ def main():
     # Copy missing runtime JSONs. We assume that GOLEM bins will update them if they exist.
     plugins_dir = Path("~").expanduser() / ".local/lib/yagna/plugins"
     plugins_dir.mkdir(parents=True, exist_ok=True)
-    print(plugins_dir)
+
     for runtime_json in Path("/usr/lib/yagna/plugins/").glob("ya-*.json"):
         if not (plugins_dir / runtime_json.name).exists():
-            print(runtime_json)
             shutil.copy2(runtime_json, plugins_dir)
 
     runtime_path = (
@@ -523,8 +558,13 @@ def main():
     # VFIO
     #
 
-    if d.yesno("Make devices available for passthrough?"):
-        bind_vfio(selected_gpu["devices"])
+    if args.passthrough or d.yesno("Make devices available for passthrough?"):
+        try:
+            bind_vfio(selected_gpu["devices"])
+        except subprocess.CalledProcessError as e:
+            raise WizardError(
+                f"Failed to attach devices to VFIO. Already bound? ({str(e)})"
+            )
 
 
 if __name__ == "__main__":
