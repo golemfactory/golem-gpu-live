@@ -14,6 +14,7 @@ RUN apt update
 RUN apt install -y --no-install-recommends \
     linux-image-generic \
     live-boot \
+    init \
     systemd \
     systemd-sysv \
     systemd-timesyncd \
@@ -81,6 +82,9 @@ RUN bash -c 'echo > /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.c
 
 # Enable SSH on boot
 RUN /lib/systemd/systemd-sysv-install enable ssh
+
+# Copy fstab
+COPY fstab /etc/
 
 # FIXME: This temporary until we update QEMU
 RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt \

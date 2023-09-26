@@ -6,7 +6,8 @@ ConditionKernelCommandLine=!headless
 
 [Service]
 ExecStart=/usr/local/bin/golemwz
-StandardInput=tty
+StandardInput=tty-force
+StandardOutput=inherit
 TTYPath=/dev/tty1
 User=golem
 Group=golem
