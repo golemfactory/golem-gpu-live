@@ -1,8 +1,8 @@
 [Unit]
-Description=GOLEM Initial Wizard Boot
+Description=GOLEM Wizard
 Before=getty@tty1.service
 DefaultDependencies=no
-ConditionKernelCommandLine=!headless
+ConditionKernelCommandLine=!skip_autostart
 
 [Service]
 ExecStart=/usr/local/bin/golemwz

@@ -150,26 +150,24 @@ def select_gpu_compatible(allow_pci_bridge=True):
         # 5. PCI bridge device being parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
-            not has_only_allowed_devices(parsed_devices, devices)
-            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-            or (
+                not has_only_allowed_devices(parsed_devices, devices)
+                or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
+                or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
+                or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
+                or (
                 pci_bridge_device
                 and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
-            )
-            or (
+        )
+                or (
                 pci_audio_device
                 and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-            )
+        )
         ):
             bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
-        vfio_devices = (
-            parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
-        )
+        vfio_devices = parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
         vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
 
         gpu_list.append(
@@ -323,6 +321,8 @@ def bind_vfio(devices):
     for dev in devices:
         driver_override_path = f"/sys/bus/pci/devices/{dev}/driver_override"
         bind_path = "/sys/bus/pci/drivers/vfio-pci/bind"
+        if Path(f"/sys/bus/pci/drivers/vfio-pci/{dev}").exists():
+            continue
         subprocess.run(
             ["sudo", "bash", "-c", f'echo "vfio-pci" > "{driver_override_path}"'],
             check=True,
@@ -418,8 +418,9 @@ def parse_args():
     )
     parser.add_argument(
         "--vfio-devices",
-        default=None,
-        help="Comma separated list of devices IDs to assign to VFIO. For example, '10de:2544,10de:228e'.",
+        default=[],
+        action="append",
+        help="List of PCI slot IDs to assign to VFIO.",
     )
     parser.add_argument(
         "--storage-partition",
@@ -427,41 +428,71 @@ def parse_args():
         help="Device partition to use for persistent storage. Using '/notset' allows to skip storage mount.",
     )
     parser.add_argument(
-        "--passthrough",
+        "--no-passthrough",
         action="store_true",
         default=False,
-        help="Attach devices to VFIO.",
+        help="Don't attach devices to VFIO.",
     )
     parser.add_argument(
-        "--no-run-golemsp",
+        "--no-save",
         action="store_true",
         default=False,
-        help="Run GolemSP.",
+        help="Don't save running configuration.",
     )
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
+
+    wizard_conf = {}
+    wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.conf"
+
+    if wizard_conf_path.exists():
+        try:
+            wizard_conf.update(json.loads(wizard_conf_path.read_text()))
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to read configuration file: {str(e)}")
+
+    updated_wizard_conf = wizard_conf.copy()
+
+    if args.storage_partition:
+        wizard_conf["storage_partition"] = args.storage_partition
+
+    if args.glm_per_hour:
+        wizard_conf["glm_per_hour"] = args.storage_partition
+
+    if args.glm_per_hour:
+        wizard_conf["init_price"] = args.init_price
+
+    if args.gpu_pci_slot and args.vfio_devices:
+        wizard_conf["gpu"] = {
+            "slot": args.gpu_pci_slot,
+            "devices": args.vfio_devices,
+            "vfio": ",".join(get_pid_vid_from_slot(dev) for dev in args.vfio_devices),
+            "description": get_pci_full_string_description_from_slot(args.gpu_pci_slot),
+        }
+
     d = WizardDialog()
 
     #
     # STORAGE
     #
 
-    if not args.storage_partition:
+    if not wizard_conf.get("storage_partition", None):
         default_partition = get_partition_by_partlabel("GOLEM Storage")
         storage_partition = d.inputbox(
             "Storage partition selection",
             init=default_partition,
         )
+        updated_wizard_conf["storage_partition"] = storage_partition
         if not storage_partition:
             if not d.yesno(
-                "No persistent storage defined. Would you like to continue?"
+                    "No persistent storage defined. Would you like to continue?"
             ):
                 raise WizardError("No persistent storage defined.")
     else:
-        storage_partition = args.storage
+        storage_partition = wizard_conf["storage_partition"]
 
     if storage_partition and storage_partition != "/notset":
         configure_storage(storage_partition)
@@ -470,19 +501,26 @@ def main():
     # GLM related values
     #
 
-    glm_per_hour = args.glm_per_hour or d.inputbox("GLM per hour:", init="0.25")
-    glm_init_price = args.init_price or d.inputbox("Init price:", init="0")
+    glm_per_hour = wizard_conf.get("glm_per_hour", None) or d.inputbox(
+        "GLM per hour:", init="0.25"
+    )
+    glm_init_price = wizard_conf.get("init_price", None) or d.inputbox(
+        "Init price:", init="0"
+    )
     try:
         cpu_price = float(glm_per_hour) / 3600.0
         duration_price = cpu_price / 5.0
     except ValueError as e:
         raise WizardError(f"Invalid GLM values: {str(e)}")
 
+    updated_wizard_conf["glm_per_hour"] = glm_per_hour
+    updated_wizard_conf["init_price"] = glm_init_price
+
     #
     # GPU
     #
 
-    if not args.gpu_pci_slot and not args.vfio_devices:
+    if not wizard_conf.get("gpu", None):
         gpu_list, bad_isolation_groups = select_gpu_compatible(
             allow_pci_bridge=args.relax_gpu_isolation
         )
@@ -514,8 +552,10 @@ def main():
 
         if not code or not selected_gpu:
             raise WizardError("Invalid GPU selection.")
+
+        updated_wizard_conf["gpu"] = selected_gpu
     else:
-        selected_gpu = {"slot": args.gpu_pci_slot, "vfio": args.vfio_devices}
+        selected_gpu = updated_wizard_conf["gpu"]
 
     #
     # CONFIGURE RUNTIME
@@ -566,7 +606,7 @@ def main():
     # VFIO
     #
 
-    if args.passthrough or d.yesno("Make devices available for passthrough?"):
+    if not args.no_passthrough:
         try:
             bind_vfio(selected_gpu["devices"])
         except subprocess.CalledProcessError as e:
@@ -575,20 +615,15 @@ def main():
             )
 
     #
-    # GolemSP
+    # Save running config
     #
 
-    if not args.no_run_golemsp:
+    if not args.no_save:
         try:
-            golemsp_cmd = ["golemsp", "run"]
-            subprocess.run(golemsp_cmd, check=True, env=get_env())
-        except subprocess.CalledProcessError as e:
-            raise WizardError(f"Failed to run GolemSP: {str(e)}.")
+            wizard_conf_path.write_text(json.dumps(updated_wizard_conf, indent=4))
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to save configuration file: {str(e)}")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        print(traceback.print_exception(e))
-        sys.exit(1)
+    main()
