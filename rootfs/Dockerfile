@@ -97,8 +97,14 @@ RUN bash /tmp/repack-initramfs.sh
 
 # Copy GOLEM Wizard and Systemd service
 COPY golemwz.py /usr/local/bin/golemwz
-COPY golem-wizard.service /etc/systemd/system
-RUN ln -s /etc/systemd/system/golem-wizard.service /etc/systemd/system/multi-user.target.wants
+COPY golemwz-wrapper.sh /usr/local/bin/golemwz-wrapper
+
+COPY golemwz.service /etc/systemd/system
+RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.target.wants
+
+COPY golemsp.service /etc/systemd/system
+RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants
+
 
 # Configure as Golem user
 USER golem

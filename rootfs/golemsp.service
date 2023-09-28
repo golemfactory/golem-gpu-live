@@ -1,0 +1,15 @@
+[Unit]
+Description=GOLEM SP Boot
+After=golemwz.service
+ConditionKernelCommandLine=!skip_autostart
+
+[Service]
+ExecStart=/usr/bin/golemsp run
+Type=oneshot
+User=golem
+Group=golem
+Environment=HOME=/home/golem
+LimitMEMLOCK=infinity
+
+[Install]
+WantedBy=default.target

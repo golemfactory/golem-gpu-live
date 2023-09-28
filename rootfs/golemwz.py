@@ -197,7 +197,7 @@ def get_current_partition():
 
 def get_partition_by_partlabel(partlabel):
     try:
-        blkid_output = subprocess.check_output(["blkid"]).decode("utf-8").splitlines()
+        blkid_output = subprocess.check_output(["sudo", "blkid"]).decode("utf-8").splitlines()
         pattern = rf'(.*):.*\s+LABEL="({partlabel})"\s+.*'
         for line in blkid_output:
             match = re.search(pattern, line)
@@ -402,10 +402,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument(
-        "--relax-gpu-isolation",
+        "--no-relax-gpu-isolation",
         action="store_true",
         default=False,
-        help="Relax GPU isolation. For example, allow PCI bridge on which the GPU is connected in the same IOMMU group.",
+        help="Don't allow PCI bridge on which the GPU is connected in the same IOMMU group.",
     )
     parser.add_argument(
         "--glm-per-hour", default=None, help="Recommended default value is 0.25."
@@ -522,7 +522,7 @@ def main():
 
     if not wizard_conf.get("gpu", None):
         gpu_list, bad_isolation_groups = select_gpu_compatible(
-            allow_pci_bridge=args.relax_gpu_isolation
+            allow_pci_bridge=not args.no_relax_gpu_isolation
         )
         if not gpu_list:
             if bad_isolation_groups:

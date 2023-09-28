@@ -1,0 +1,18 @@
+[Unit]
+Description=GOLEM Wizard Boot
+Before=getty@tty6.service
+ConditionKernelCommandLine=!skip_autostart
+
+[Service]
+ExecStart=/usr/local/bin/golemwz-wrapper
+Type=oneshot
+StandardInput=tty
+StandardOutput=inherit
+TTYPath=/dev/tty6
+TTYReset=yes
+User=golem
+Group=golem
+Environment=HOME=/home/golem
+
+[Install]
+WantedBy=default.target
