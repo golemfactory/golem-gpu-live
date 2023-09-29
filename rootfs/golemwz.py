@@ -468,7 +468,7 @@ def parse_args():
     parser.add_argument(
         "--storage-partition",
         default=None,
-        help="Device partition to use for persistent storage. Using '/notset' allows to skip storage mount.",
+        help="Device UUID partition to use for persistent storage. Using '/notset' allows to skip storage mount.",
     )
     parser.add_argument(
         "--no-passthrough",
@@ -550,7 +550,7 @@ def main(dialog):
                 ],
                 check=True,
                 capture_output=True,
-                input=f"{password}\n{password}".encode()
+                input=f"{password}\n{password}".encode(),
             )
             dialog.msgbox(f"'golem' password: {password}")
             wizard_conf["is_password_set"] = True
@@ -572,16 +572,23 @@ def main(dialog):
                 break
 
         # Put GOLEM Storage at the first position
+        not_configure = ("-", "Do not configure persistent storage")
+        begin_choices = []
+        end_choices = []
         if default_partition:
             partitions = list(devices.keys())
             partitions.remove(default_partition)
             info = [devices[k] for k in [default_partition] + partitions]
+            end_choices = [not_configure]
         else:
+            begin_choices = [not_configure]
             info = devices.values()
 
-        partition_choices = [
-            (dev["DEVNAME"], get_partition_description(dev)) for dev in info
-        ] + [("-", "Do not configure persistent storage")]
+        partition_choices = (
+            begin_choices
+            + [(dev["DEVNAME"], get_partition_description(dev)) for dev in info]
+            + end_choices
+        )
 
         code, partition_tag = dialog.menu(
             "Select a storage partition:",
