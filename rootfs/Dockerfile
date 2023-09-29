@@ -69,6 +69,7 @@ RUN bash -c "echo -e 'golem\ngolem' | passwd golem"
 # Configure sudo for 'golem'
 RUN usermod -aG sudo golem
 RUN bash -c 'echo "golem ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/golem'
+RUN chage -d 0 golem
 
 # Add 'golem' to KVM group
 RUN usermod -aG kvm golem
@@ -81,7 +82,7 @@ RUN set -i 's/managed=false/managed=true/g' /etc/NetworkManager/NetworkManager.c
 RUN bash -c 'echo > /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.conf'
 
 # Enable SSH on boot
-RUN /lib/systemd/systemd-sysv-install enable ssh
+RUN ln -s /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/
 
 # Copy fstab
 COPY fstab /etc/
@@ -100,10 +101,10 @@ COPY golemwz.py /usr/local/bin/golemwz
 COPY golemwz-wrapper.sh /usr/local/bin/golemwz-wrapper
 
 COPY golemwz.service /etc/systemd/system
-RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.target.wants
+RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.target.wants/
 
 COPY golemsp.service /etc/systemd/system
-RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants
+RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants/
 
 # Configure as Golem user
 USER golem
