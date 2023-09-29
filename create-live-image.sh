@@ -55,6 +55,10 @@ mount "${IMG_DEV}" "${MNTDIR}"
 # Copy rootfs
 rsync -a "${WORKDIR}/rootfs/" "${MNTDIR}/"
 
+# Fixes
+echo golem-provider > "${MNTDIR}/etc/hostname"
+ln -sf /run/systemd/resolve/stub-resolv.conf "${MNTDIR}/etc/resolv.conf"
+
 # Create EFI mount point
 mkdir -p "${MNTDIR}/boot/efi/"
 mount "${EFI_IMG_DEV}" "${MNTDIR}/boot/efi/"

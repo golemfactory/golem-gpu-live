@@ -14,6 +14,7 @@ TEMP_DIR=$(mktemp -d)
 YA_INSTALLER_CORE="${YA_INSTALLER_CORE:-pre-rel-v0.13.0-rc18}"
 YA_INSTALLER_WASI=${YA_INSTALLER_WASI:-0.2.3}
 YA_INSTALLER_VM=${YA_INSTALLER_VM:-0.3.0}
+YA_INSTALLER_RESOURCES=${YA_INSTALLER_RESOURCES:-0.1.9}
 
 # Function to download .deb files using curl
 download_deb_files() {

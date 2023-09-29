@@ -105,7 +105,6 @@ RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.tar
 COPY golemsp.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants
 
-
 # Configure as Golem user
 USER golem
 

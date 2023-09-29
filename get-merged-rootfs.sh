@@ -63,7 +63,7 @@ for rootfs_layer in "${rootfs_layers[@]}"; do
 done
 
 # Cleanup aufs stuff
-find "$tmp_directory/rootfs" -name '.wh..wh..opq' -delete
+find "$tmp_directory/rootfs" -name '.wh.*' -delete
 
 mkdir -p "$output_directory"
 rm -rf "$output_directory/rootfs"

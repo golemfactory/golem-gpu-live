@@ -150,24 +150,26 @@ def select_gpu_compatible(allow_pci_bridge=True):
         # 5. PCI bridge device being parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
-                not has_only_allowed_devices(parsed_devices, devices)
-                or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-                or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-                or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-                or (
+            not has_only_allowed_devices(parsed_devices, devices)
+            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
+            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
+            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
+            or (
                 pci_bridge_device
                 and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
-        )
-                or (
+            )
+            or (
                 pci_audio_device
                 and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-        )
+            )
         ):
             bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
-        vfio_devices = parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
+        vfio_devices = (
+            parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
+        )
         vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
 
         gpu_list.append(
@@ -195,17 +197,46 @@ def get_current_partition():
     return None
 
 
-def get_partition_by_partlabel(partlabel):
-    try:
-        blkid_output = subprocess.check_output(["sudo", "blkid"]).decode("utf-8").splitlines()
-        pattern = rf'(.*):.*\s+LABEL="({partlabel})"\s+.*'
-        for line in blkid_output:
-            match = re.search(pattern, line)
-            if match:
-                return match.group(1)
-    except Exception as e:
-        raise WizardError(f"An error occurred: {e}")
-    return ""
+def parse_blkid_output():
+    blkid_output = subprocess.check_output(["sudo", "blkid", "-o", "export"]).decode(
+        "utf-8"
+    )
+    blocks = blkid_output.strip().split("\n\n")
+    result = {}
+
+    for block in blocks:
+        lines = block.split("\n")
+        device_info = {}
+
+        for line in lines:
+            key, value = line.split("=")
+            key = key.strip()
+            value = value.strip().replace("\\ ", " ")
+            device_info[key] = value
+
+        if "DEVNAME" in device_info:
+            devname = device_info["DEVNAME"]
+            result[devname] = device_info
+
+    return result
+
+
+def get_filtered_blkid_output():
+    devices = parse_blkid_output()
+    filtered_devices = {}
+    for partition, info in devices.items():
+        if not info.get("UUID", None):
+            continue
+        info["_label"] = info.get("PARTLABEL", "") or info.get("LABEL", "")
+        filtered_devices[partition] = info
+    return filtered_devices
+
+
+def get_partition_description(device):
+    description = f"UUID={device['UUID']}"
+    if device["_label"]:
+        description = f"{description} LABEL={device['_label']}"
+    return description
 
 
 def fix_paths(runtime_files_dir):
@@ -226,17 +257,18 @@ def fix_paths(runtime_files_dir):
 
 
 def configure_storage(storage_partition):
-    if not os.path.exists(storage_partition):
+    dev_by_uuid = f"/dev/disk/by-uuid/{storage_partition}"
+    if not os.path.exists(dev_by_uuid):
         raise WizardError("Invalid storage provided.")
 
     mount_point = Path("~").expanduser() / ".local"
 
-    if not is_mount_needed(mount_point, storage_partition):
+    if not is_mount_needed(mount_point, dev_by_uuid):
         return
 
     mount_point.mkdir(exist_ok=True)
 
-    mount_cmd = ["sudo", "mount", storage_partition, str(mount_point)]
+    mount_cmd = ["sudo", "mount", dev_by_uuid, str(mount_point)]
     subprocess.run(mount_cmd, check=True)
 
     permissions_cmd = ["sudo", "chown", "-R", "golem:golem", str(mount_point)]
@@ -271,19 +303,23 @@ def preset_exists(runtime_id):
 
 def configure_runtime(runtime_path, selected_gpu):
     runtime_content = json.loads(runtime_path.read_text())
+    # We rename default vm runtime name as we override its content
+    runtime_content[0]["name"] = "vm-nvidia"
     runtime_gpu_arg = f"--runtime-arg=--pci-device={selected_gpu['slot']}"
     runtime_content[0].setdefault("extra-args", [])
-    if not runtime_gpu_arg in runtime_content[0]["extra-args"]:
+    if runtime_gpu_arg not in runtime_content[0]["extra-args"]:
         runtime_content[0]["extra-args"].append(
             f"--runtime-arg=--pci-device={selected_gpu['slot']}"
         )
     runtime_path.write_text(json.dumps(runtime_content, indent=4))
 
 
-def configure_preset(runtime_id, duration_price, cpu_price, init_price):
+def configure_preset(runtime_id, account, duration_price, cpu_price, init_price):
     env = get_env()
 
     golemsp_setup_cmd = ["golemsp", "setup", "--no-interactive"]
+    if account:
+        golemsp_setup_cmd += ["--account", account]
     subprocess.run(golemsp_setup_cmd, check=True, env=env)
 
     pre_install_cmd = ["ya-provider", "pre-install"]
@@ -340,6 +376,7 @@ class WizardDialog:
     @classmethod
     def __init__(cls):
         cls.dialog.set_background_title("GOLEM Provider Wizard")
+        cls.msgbox("Welcome to GOLEM Provider configuration wizard!")
 
     @classmethod
     def _auto_height(cls, width, text):
@@ -407,6 +444,7 @@ def parse_args():
         default=False,
         help="Don't allow PCI bridge on which the GPU is connected in the same IOMMU group.",
     )
+    parser.add_argument("--glm-account", default=None, help="Account for payments.")
     parser.add_argument(
         "--glm-per-hour", default=None, help="Recommended default value is 0.25."
     )
@@ -442,7 +480,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main():
+def main(dialog):
     args = parse_args()
 
     wizard_conf = {}
@@ -454,16 +492,17 @@ def main():
         except json.JSONDecodeError as e:
             logger.error(f"Failed to read configuration file: {str(e)}")
 
-    updated_wizard_conf = wizard_conf.copy()
-
     if args.storage_partition:
         wizard_conf["storage_partition"] = args.storage_partition
+
+    if args.glm_account:
+        wizard_conf["glm_account"] = args.glm_account
 
     if args.glm_per_hour:
         wizard_conf["glm_per_hour"] = args.storage_partition
 
     if args.glm_per_hour:
-        wizard_conf["init_price"] = args.init_price
+        wizard_conf["glm_init_price"] = args.init_price
 
     if args.gpu_pci_slot and args.vfio_devices:
         wizard_conf["gpu"] = {
@@ -473,24 +512,67 @@ def main():
             "description": get_pci_full_string_description_from_slot(args.gpu_pci_slot),
         }
 
-    d = WizardDialog()
+    #
+    # TERMS OF USE
+    #
+
+    if not wizard_conf.get("accepted_terms", False):
+        if not dialog.yesno(
+            "By installing & running this software you declare that you have read, understood and hereby accept the "
+            "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
+        ):
+            return
+        # Create the same file as "as-provider" script
+        terms_path = Path("~").expanduser() / ".local/share/ya-installer/terms"
+        terms_path.mkdir(parents=True, exist_ok=True)
+        (terms_path / "testnet-01.tag").write_text("")
+
+        # Save it in conf
+        wizard_conf["accepted_terms"] = True
 
     #
     # STORAGE
     #
 
     if not wizard_conf.get("storage_partition", None):
-        default_partition = get_partition_by_partlabel("GOLEM Storage")
-        storage_partition = d.inputbox(
-            "Storage partition selection",
-            init=default_partition,
+        devices = get_filtered_blkid_output()
+
+        # Find GOLEM Storage
+        default_partition = None
+        for dev in devices.values():
+            if dev["_label"] == "GOLEM Storage":
+                default_partition = dev["DEVNAME"]
+                break
+
+        # Put GOLEM Storage at the first position
+        if default_partition:
+            partitions = list(devices.keys())
+            partitions.remove(default_partition)
+            info = [devices[k] for k in [default_partition] + partitions]
+        else:
+            info = devices.values()
+
+        partition_choices = [
+            (dev["DEVNAME"], get_partition_description(dev)) for dev in info
+        ] + [("-", "Do not configure persistent storage")]
+
+        code, partition_tag = dialog.menu(
+            "Select a storage partition:",
+            choices=partition_choices,
+            height=64,
+            width=128,
         )
-        updated_wizard_conf["storage_partition"] = storage_partition
-        if not storage_partition:
-            if not d.yesno(
-                    "No persistent storage defined. Would you like to continue?"
+
+        if not partition_tag or partition_tag == "-":
+            if not dialog.yesno(
+                "No persistent storage defined. Would you like to continue?"
             ):
-                raise WizardError("No persistent storage defined.")
+                return
+            storage_partition = "/notset"
+        else:
+            storage_partition = devices[partition_tag]["UUID"]
+
+        wizard_conf["storage_partition"] = storage_partition
     else:
         storage_partition = wizard_conf["storage_partition"]
 
@@ -500,12 +582,14 @@ def main():
     #
     # GLM related values
     #
-
-    glm_per_hour = wizard_conf.get("glm_per_hour", None) or d.inputbox(
+    glm_account = wizard_conf.get("glm_account", None) or dialog.inputbox(
+        "Account for payments:"
+    )
+    glm_per_hour = wizard_conf.get("glm_per_hour", None) or dialog.inputbox(
         "GLM per hour:", init="0.25"
     )
-    glm_init_price = wizard_conf.get("init_price", None) or d.inputbox(
-        "Init price:", init="0"
+    glm_init_price = wizard_conf.get("glm_init_price", None) or dialog.inputbox(
+        "GLM init price:", init="0"
     )
     try:
         cpu_price = float(glm_per_hour) / 3600.0
@@ -513,8 +597,9 @@ def main():
     except ValueError as e:
         raise WizardError(f"Invalid GLM values: {str(e)}")
 
-    updated_wizard_conf["glm_per_hour"] = glm_per_hour
-    updated_wizard_conf["init_price"] = glm_init_price
+    wizard_conf["glm_account"] = glm_account
+    wizard_conf["glm_per_hour"] = glm_per_hour
+    wizard_conf["glm_init_price"] = glm_init_price
 
     #
     # GPU
@@ -532,12 +617,12 @@ def main():
                         msg = f"IOMMU Group '{iommu_group}' has bad isolation:\n\n"
                         for device in devices:
                             msg += "  " + device + "\n"
-                        d.msgbox(msg, width=640)
+                        dialog.msgbox(msg, width=640)
 
             raise WizardError("No compatible GPU available.")
 
         gpu_choices = [(gpu["description"], "") for gpu in gpu_list]
-        code, gpu_tag = d.menu("Select a GPU:", choices=gpu_choices)
+        code, gpu_tag = dialog.menu("Select a GPU:", choices=gpu_choices)
 
         selected_gpu = None
         for gpu in gpu_list:
@@ -546,16 +631,16 @@ def main():
                 break
 
         if selected_gpu:
-            d.msgbox(
+            dialog.msgbox(
                 f"Selected GPU: {selected_gpu['slot']} (VFIO: {selected_gpu['vfio']})"
             )
 
         if not code or not selected_gpu:
             raise WizardError("Invalid GPU selection.")
 
-        updated_wizard_conf["gpu"] = selected_gpu
+        wizard_conf["gpu"] = selected_gpu
     else:
-        selected_gpu = updated_wizard_conf["gpu"]
+        selected_gpu = wizard_conf["gpu"]
 
     #
     # CONFIGURE RUNTIME
@@ -594,7 +679,8 @@ def main():
 
     try:
         configure_preset(
-            runtime_id="vm",
+            runtime_id="vm-nvidia",
+            account=glm_account,
             duration_price=duration_price,
             cpu_price=cpu_price,
             init_price=glm_init_price,
@@ -620,10 +706,17 @@ def main():
 
     if not args.no_save:
         try:
-            wizard_conf_path.write_text(json.dumps(updated_wizard_conf, indent=4))
+            wizard_conf_path.write_text(json.dumps(wizard_conf, indent=4))
         except json.JSONDecodeError as e:
             logger.error(f"Failed to save configuration file: {str(e)}")
 
 
 if __name__ == "__main__":
-    main()
+    wizard_dialog = WizardDialog()
+    try:
+        main(wizard_dialog)
+    except WizardError as e:
+        logger.error(f"Wizard error: {str(e)}")
+        wizard_dialog.msgbox(str(e))
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")

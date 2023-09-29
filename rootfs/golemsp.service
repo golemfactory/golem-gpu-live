@@ -5,11 +5,12 @@ ConditionKernelCommandLine=!skip_autostart
 
 [Service]
 ExecStart=/usr/bin/golemsp run
-Type=oneshot
+Type=simple
 User=golem
 Group=golem
 Environment=HOME=/home/golem
 LimitMEMLOCK=infinity
+PIDFile=/home/golem/.local/share/ya-provider/ya-provider.pid
 
 [Install]
 WantedBy=default.target
