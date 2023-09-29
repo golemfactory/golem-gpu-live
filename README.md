@@ -19,6 +19,7 @@ sudo apt install \
     mtools \
     dosfstools \
     jq \
+    rsync \
     docker.io
 ```
 

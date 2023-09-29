@@ -55,16 +55,13 @@ RUN apt install -y --no-install-recommends \
 
 RUN apt clean
 
-# Set 'root' password.
-RUN bash -c "echo -e 'root\nroot' | passwd"
-
 # Blacklist 'nouveau'.
 COPY vfio.conf /etc/modprobe.d/
 RUN update-initramfs -u
 
 # Create 'golem' user.
 RUN useradd -m golem -s /bin/bash
-RUN bash -c "echo -e 'golem\ngolem' | passwd golem"
+#RUN bash -c "echo -e 'golem\ngolem' | passwd golem"
 
 # Configure sudo for 'golem'
 RUN usermod -aG sudo golem
@@ -73,6 +70,10 @@ RUN chage -d 0 golem
 
 # Add 'golem' to KVM group
 RUN usermod -aG kvm golem
+
+# Autologin of golem on tty1
+RUN mkdir -p '/etc/systemd/system/getty@tty1.service.d'
+COPY override.conf /etc/systemd/system/getty@tty1.service.d/
 
 # Ensure permissions on /dev/vfio/X
 COPY 50-vfio.rules /etc/udev/rules.d/

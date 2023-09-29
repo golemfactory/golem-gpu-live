@@ -7,9 +7,9 @@ import os
 import shutil
 import subprocess
 import sys
-import re
 import json
-import traceback
+import random
+import string
 
 from dialog import Dialog
 from textwrap import wrap
@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 class WizardError(Exception):
     pass
+
+
+def get_random_string(length):
+    letters = string.ascii_letters + string.digits
+    return "".join(random.choice(letters) for _ in range(length))
 
 
 def is_mount_needed(directory, expected_device_path):
@@ -529,6 +534,28 @@ def main(dialog):
 
         # Save it in conf
         wizard_conf["accepted_terms"] = True
+
+    #
+    # CONFIGURE PASSWORD
+    #
+
+    if not wizard_conf.get("is_password_set", False):
+        try:
+            password = get_random_string(14)
+            subprocess.run(
+                [
+                    "sudo",
+                    "passwd",
+                    "golem",
+                ],
+                check=True,
+                capture_output=True,
+                input=f"{password}\n{password}".encode()
+            )
+            dialog.msgbox(f"'golem' password: {password}")
+            wizard_conf["is_password_set"] = True
+        except subprocess.CalledProcessError as e:
+            raise WizardError(f"Failed to set 'golem' password: {str(e)}.")
 
     #
     # STORAGE
