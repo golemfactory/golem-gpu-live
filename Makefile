@@ -12,10 +12,10 @@ root:
 	sudo ./get-merged-rootfs.sh golem-gpu-live $(TMP_DIR) $(WORK_DIR)
 
 image:
-	sudo ./create-live-image.sh $(WORK_DIR)
+	sudo $(LOCAL_DIR)/create-live-image.sh $(WORK_DIR)
 
 iso:
-	sudo ./create-live-iso.sh $(WORK_DIR)
+	sudo $(LOCAL_DIR)/create-live-iso.sh $(WORK_DIR)
 
 clean:
 	rm -rf $(WORK_DIR) $(TMP_DIR)
