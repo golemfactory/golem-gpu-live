@@ -82,7 +82,7 @@ RUN set -i 's/managed=false/managed=true/g' /etc/NetworkManager/NetworkManager.c
 RUN bash -c 'echo > /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.conf'
 
 # Enable SSH on boot
-RUN ln -s /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/
+RUN ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/
 
 # Copy fstab
 COPY fstab /etc/
