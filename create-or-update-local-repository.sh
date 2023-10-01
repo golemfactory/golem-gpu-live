@@ -60,7 +60,7 @@ download_deb_files \
     https://github.com/golemfactory/yagna/releases/download/pre-rel-v0.13.0-rc18/golem-provider_pre-rel-v0.13.0-rc18_amd64.deb \
     https://github.com/golemfactory/ya-runtime-wasi/releases/download/pre-rel-v0.2.4/ya-runtime-wasi-cli_0.2.3_amd64.deb \
     https://github.com/golemfactory/ya-runtime-vm/releases/download/pre-rel-v0.4.0-rc4/ya-runtime-vm_pre-rel-v0.4.0-rc4_amd64.deb \
-    https://github.com/fepitre/golem-nvidia-kernel/releases/download/v5.10.188-3/golem-nvidia-kernel_5.10.188-3_amd64.deb
+    https://github.com/fepitre/golem-nvidia-kernel/releases/download/v6.1.55-1/golem-nvidia-kernel_6.1.55-1_amd64.deb
 
 # Add the new .deb files to the local repository and sign the repository metadata
 create_local_repository
