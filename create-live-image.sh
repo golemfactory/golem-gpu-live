@@ -85,5 +85,6 @@ grub-mkstandalone -O x86_64-efi \
 
 # Generate BIOS bootable GRUB image
 grub-install \
+    --target=i386-pc \
     --modules="part_gpt part_msdos fat iso9660" \
     "${IMG_LOOP}"
