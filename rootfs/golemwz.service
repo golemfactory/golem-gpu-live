@@ -10,6 +10,7 @@ StandardInput=tty
 StandardOutput=inherit
 TTYPath=/dev/tty6
 TTYReset=yes
+TTYVHangup=yes
 User=golem
 Group=golem
 Environment=HOME=/home/golem

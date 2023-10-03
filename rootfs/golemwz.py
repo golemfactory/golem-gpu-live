@@ -567,7 +567,7 @@ def main(dialog):
         # Find GOLEM Storage
         default_partition = None
         for dev in devices.values():
-            if dev["_label"] == "GOLEM Storage":
+            if dev["_label"] == "Golem storage":
                 default_partition = dev["DEVNAME"]
                 break
 

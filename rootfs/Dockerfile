@@ -61,7 +61,7 @@ RUN update-initramfs -u
 
 # Create 'golem' user.
 RUN useradd -m golem -s /bin/bash
-#RUN bash -c "echo -e 'golem\ngolem' | passwd golem"
+RUN bash -c "passwd -d golem"
 
 # Configure sudo for 'golem'
 RUN usermod -aG sudo golem
@@ -92,10 +92,6 @@ COPY fstab /etc/
 RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt \
        /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt.orig
 RUN ln -s /usr/bin/qemu-system-x86_64 /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt
-
-# FIXME: This is temporary until we allow multiple -initrd to vmrt and update devtmpfs mount options in init
-COPY --chown=golem:golem repack-initramfs.sh /tmp
-RUN bash /tmp/repack-initramfs.sh
 
 # Copy GOLEM Wizard and Systemd service
 COPY golemwz.py /usr/local/bin/golemwz
