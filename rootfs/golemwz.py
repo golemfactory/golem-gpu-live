@@ -171,25 +171,25 @@ def select_gpu_compatible(allow_pci_bridge=True):
         # 5. PCI bridge device being parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
-            not has_only_allowed_devices(parsed_devices, devices)
-            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-            or (
+                not has_only_allowed_devices(parsed_devices, devices)
+                or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
+                or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
+                or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
+                or (
                 pci_bridge_device
                 and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
-            )
-            or (
+        )
+                or (
                 pci_audio_device
                 and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-            )
+        )
         ):
             bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
         vfio_devices = (
-            parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
+                parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
         )
         vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
 
@@ -455,6 +455,16 @@ class WizardDialog:
 
         return cls.dialog.menu(text, **default)
 
+    @classmethod
+    def pause(cls, text, **info):
+        default = {"colors": True, "width": 72, "height": 8}
+        default.update(info)
+
+        if not default["height"]:
+            default["height"] = cls._auto_height(default["width"], default["text"])
+
+        return cls.dialog.pause(text, **default)
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -539,8 +549,8 @@ def main(dialog):
 
     if not wizard_conf.get("accepted_terms", False):
         if not dialog.yesno(
-            "By installing & running this software you declare that you have read, understood and hereby accept the "
-            "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
+                "By installing & running this software you declare that you have read, understood and hereby accept the "
+                "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
         ):
             return
         # Create the same file as "as-provider" script
@@ -575,11 +585,11 @@ def main(dialog):
             )
             max_attempts = 3
             attempts = 0
-            while attempts < max_attempts or not get_ip_addresses():
+            while attempts < max_attempts:
                 if get_ip_addresses():
                     break
-                time.sleep(5)
                 attempts += 1
+                dialog.pause(f"Waiting for an IP address being available... ({attempts}/{max_attempts})")
             addresses = get_ip_addresses()
             if addresses:
                 addresses_str = "\n- " + "\n- ".join(addresses)
@@ -619,9 +629,9 @@ def main(dialog):
             info = devices.values()
 
         partition_choices = (
-            begin_choices
-            + [(dev["DEVNAME"], get_partition_description(dev)) for dev in info]
-            + end_choices
+                begin_choices
+                + [(dev["DEVNAME"], get_partition_description(dev)) for dev in info]
+                + end_choices
         )
 
         code, partition_tag = dialog.menu(
@@ -633,7 +643,7 @@ def main(dialog):
 
         if not partition_tag or partition_tag == "-":
             if not dialog.yesno(
-                "No persistent storage defined. Would you like to continue?"
+                    "No persistent storage defined. Would you like to continue?"
             ):
                 return
             storage_partition = "/notset"
@@ -783,6 +793,9 @@ if __name__ == "__main__":
     wizard_dialog = WizardDialog()
     try:
         main(wizard_dialog)
+    except KeyboardInterrupt:
+        logger.error("Interrupting...")
+        wizard_dialog.msgbox("Keyboard interruyp")
     except WizardError as e:
         logger.error(f"Wizard error: {str(e)}")
         wizard_dialog.msgbox(str(e))
