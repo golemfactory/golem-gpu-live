@@ -43,12 +43,14 @@ IMG_LOOP=$(/sbin/losetup -P -f --show "$IMG")
 EFI_IMG_DEV=${IMG_LOOP}p1
 BIOS_IMG_DEV=${IMG_LOOP}p2
 IMG_DEV=${IMG_LOOP}p3
+STORAGE_DEV=${IMG_LOOP}p4
 
 udevadm settle --exit-if-exists="$IMG_DEV"
 
-# Creating filesystem
+# Creating filesystems
 /sbin/mkfs.vfat "${EFI_IMG_DEV}"
 /sbin/mkfs.ext4 -U 90a495f3-c8ce-45c6-97ac-3bd5edf3aebd -q -F "${IMG_DEV}"
+/sbin/mkfs.ext4 -q -F "${STORAGE_DEV}"
 
 mkdir -p "${MNTDIR}"
 mount "${IMG_DEV}" "${MNTDIR}"

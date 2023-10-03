@@ -10,6 +10,7 @@ import sys
 import json
 import random
 import string
+import re
 
 from dialog import Dialog
 from textwrap import wrap
@@ -26,6 +27,20 @@ logger = logging.getLogger(__name__)
 
 class WizardError(Exception):
     pass
+
+
+def get_ip_addresses():
+    ip_addresses = []
+    try:
+        output = subprocess.check_output(["ip", "addr"]).decode("utf-8")
+        parsed_addresses = re.findall(r"inet ([\d.]+)", output)
+        for addr in parsed_addresses:
+            if addr == "127.0.0.1":
+                continue
+            ip_addresses.append(addr)
+    except subprocess.CalledProcessError:
+        pass
+    return ip_addresses
 
 
 def get_random_string(length):
@@ -552,7 +567,11 @@ def main(dialog):
                 capture_output=True,
                 input=f"{password}\n{password}".encode(),
             )
-            dialog.msgbox(f"'golem' password: {password}")
+            addr = "\n- " + "\n- ".join(get_ip_addresses())
+            dialog.msgbox(
+                f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\\n\nYou can now SSH to this host at:{addr}",
+                height=16,
+            )
             wizard_conf["is_password_set"] = True
         except subprocess.CalledProcessError as e:
             raise WizardError(f"Failed to set 'golem' password: {str(e)}.")
