@@ -11,6 +11,7 @@ import json
 import random
 import string
 import re
+import time
 
 from dialog import Dialog
 from textwrap import wrap
@@ -349,7 +350,7 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
         "golemsp",
         "manifest-bundle",
         "add",
-        "/home/golem/resources_dir",
+        "/usr/lib/yagna/installer",
     ]
     subprocess.run(golemsp_manifest_bundle_cmd, check=True, env=env)
 
@@ -567,11 +568,25 @@ def main(dialog):
                 capture_output=True,
                 input=f"{password}\n{password}".encode(),
             )
-            addr = "\n- " + "\n- ".join(get_ip_addresses())
+
             dialog.msgbox(
-                f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\\n\nYou can now SSH to this host at:{addr}",
+                f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\",
                 height=16,
             )
+            max_attempts = 3
+            attempts = 0
+            while attempts < max_attempts or not get_ip_addresses():
+                if get_ip_addresses():
+                    break
+                time.sleep(5)
+                attempts += 1
+            addresses = get_ip_addresses()
+            if addresses:
+                addresses_str = "\n- " + "\n- ".join(addresses)
+                msg = f"Available IP addresses to connect to SSH for this host:{addresses_str}"
+            else:
+                msg = "Cannot determine available IP addresses. Please check documentation."
+            dialog.msgbox(msg, height=8)
             wizard_conf["is_password_set"] = True
         except subprocess.CalledProcessError as e:
             raise WizardError(f"Failed to set 'golem' password: {str(e)}.")

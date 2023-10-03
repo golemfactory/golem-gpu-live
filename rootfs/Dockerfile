@@ -102,10 +102,3 @@ RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.tar
 
 COPY golemsp.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants/
-
-# Configure as Golem user
-USER golem
-
-# FIXME: This is temporary until ressource content is available as DEB.
-RUN mkdir /home/golem/resources_dir
-RUN bash -c "curl --proto '=https' --silent --show-error --fail --location https://github.com/golemfactory/ya-installer-resources/releases/latest/download/resources.tar.gz --output - | tar -C /home/golem/resources_dir -xz -f -"
