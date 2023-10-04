@@ -9,9 +9,7 @@ RUN bash -c 'echo deb http://mirror.notset.fr/golem/repo/ jammy main > /etc/apt/
 # Accept GOLEM terms for install then Wizard will manage it
 RUN bash -c 'echo golem golem/terms/subsidy-01 string yes | debconf-set-selections'
 
-RUN apt update
-
-RUN apt install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     linux-image-generic \
     live-boot \
     init \
@@ -45,15 +43,12 @@ RUN apt install -y --no-install-recommends \
     qemu-kvm \
     musl-tools \
     make \
-    wget
-
-RUN apt install -y --no-install-recommends \
+    wget \
     golem-provider \
     golem-nvidia-kernel \
     ya-runtime-vm \
-    ya-runtime-wasi-cli
-
-RUN apt clean
+    ya-runtime-wasi-cli \
+    ya-installer-resources && apt-get clean
 
 # Blacklist 'nouveau'.
 COPY vfio.conf /etc/modprobe.d/
