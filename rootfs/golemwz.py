@@ -1,21 +1,21 @@
 #!/usr/bin/python3
 import argparse
 import glob
+import json
 import locale
 import logging
 import os
+import random
+import re
 import shutil
+import string
 import subprocess
 import sys
-import json
-import random
-import string
-import re
 import time
+from pathlib import Path
+from textwrap import wrap
 
 from dialog import Dialog
-from textwrap import wrap
-from pathlib import Path
 
 locale.setlocale(locale.LC_ALL, "")
 
@@ -578,21 +578,29 @@ def main(dialog):
                 capture_output=True,
                 input=f"{password}\n{password}".encode(),
             )
-
             dialog.msgbox(
                 f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\",
                 height=16,
             )
-            max_attempts = 3
-            attempts = 0
-            while attempts < max_attempts:
-                if get_ip_addresses():
+
+            # Setup timeout for letting nm-online detecting activation
+            cur = 0
+            timeout = 30
+            wizard_dialog.dialog.gauge_start("Progress: 0%", title="Waiting for network activation...")
+            process = subprocess.Popen(["nm-online", "--timeout", str(timeout)], stdout=subprocess.DEVNULL)
+            while cur <= timeout:
+                if process.poll() is not None:
+                    wizard_dialog.dialog.gauge_update(100, "Progress: 100%", update_text=True)
                     break
-                attempts += 1
-                dialog.pause(f"Waiting for an IP address being available... ({attempts}/{max_attempts})")
-            addresses = get_ip_addresses()
-            if addresses:
-                addresses_str = "\n- " + "\n- ".join(addresses)
+                update = int(100 * cur / timeout)
+                wizard_dialog.dialog.gauge_update(update, "Progress: {0}%".format(update), update_text=True)
+                time.sleep(1)
+                cur += 1
+            wizard_dialog.dialog.gauge_stop()
+
+            # We rely on nm-online saying it has found activated connections
+            if process.poll() == 0 and get_ip_addresses():
+                addresses_str = "\n- " + "\n- ".join(get_ip_addresses())
                 msg = f"Available IP addresses to connect to SSH for this host:{addresses_str}"
             else:
                 msg = "Cannot determine available IP addresses. Please check documentation."
