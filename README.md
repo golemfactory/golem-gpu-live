@@ -1,9 +1,5 @@
 # golem-gpu-live
 
-!!! WARNING !!!
-
-This branch is subject to force-push.
-
 ### Dependencies
 
 ```commandline
