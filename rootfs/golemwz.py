@@ -350,7 +350,7 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
         "golemsp",
         "manifest-bundle",
         "add",
-        "/home/golem/resources_dir",
+        "/usr/lib/yagna/installer",
     ]
     subprocess.run(golemsp_manifest_bundle_cmd, check=True, env=env)
 
