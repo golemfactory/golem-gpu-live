@@ -7,7 +7,7 @@ This README provides instructions on how to set up the necessary dependencies an
 
 ## Dependencies
 
-Before you can create the live image and ISO, you need to install several dependencies. Run the following command to install them:
+Before you can create the live image, you need to install several dependencies. Run the following command to install them:
 
 ```shell
 sudo apt install \
