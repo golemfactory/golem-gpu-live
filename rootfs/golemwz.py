@@ -579,8 +579,7 @@ def main(dialog):
                 input=f"{password}\n{password}".encode(),
             )
             dialog.msgbox(
-                f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\",
-                height=16,
+                f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
             )
 
             # Setup timeout for letting nm-online detecting activation
@@ -708,7 +707,7 @@ def main(dialog):
             raise WizardError("No compatible GPU available.")
 
         gpu_choices = [(gpu["description"], "") for gpu in gpu_list]
-        code, gpu_tag = dialog.menu("Select a GPU:", choices=gpu_choices)
+        code, gpu_tag = dialog.menu("Select a GPU:", choices=gpu_choices, height=32)
 
         selected_gpu = None
         for gpu in gpu_list:
