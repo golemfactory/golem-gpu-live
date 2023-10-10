@@ -395,9 +395,10 @@ class WizardDialog:
     dialog = Dialog(dialog="dialog", pass_args_via_file=False)
 
     @classmethod
-    def __init__(cls):
+    def __init__(cls, show_welcome: bool = False):
         cls.dialog.set_background_title("GOLEM Provider Wizard")
-        cls.msgbox("Welcome to GOLEM Provider configuration wizard!")
+        if show_welcome:
+            cls.msgbox("Welcome to GOLEM Provider configuration wizard!")
 
     @classmethod
     def _auto_height(cls, width, text):
@@ -511,7 +512,7 @@ def parse_args():
     return parser.parse_args()
 
 
-def main(dialog):
+def main():
     args = parse_args()
 
     wizard_conf = {}
@@ -543,12 +544,26 @@ def main(dialog):
             "description": get_pci_full_string_description_from_slot(args.gpu_pci_slot),
         }
 
+    system_configured = all(
+        [
+            wizard_conf.get("accepted_terms", False),
+            wizard_conf.get("is_password_set", False),
+            wizard_conf.get("storage_partition", None),
+            wizard_conf.get("glm_account", None),
+            wizard_conf.get("glm_per_hour", None),
+            wizard_conf.get("glm_init_price", None),
+            wizard_conf.get("gpu", None)
+        ]
+    )
+
+    wizard_dialog = WizardDialog(show_welcome=not system_configured)
+
     #
     # TERMS OF USE
     #
 
     if not wizard_conf.get("accepted_terms", False):
-        if not dialog.yesno(
+        if not wizard_dialog.yesno(
                 "By installing & running this software you declare that you have read, understood and hereby accept the "
                 "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
         ):
@@ -578,7 +593,7 @@ def main(dialog):
                 capture_output=True,
                 input=f"{password}\n{password}".encode(),
             )
-            dialog.msgbox(
+            wizard_dialog.msgbox(
                 f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
             )
 
@@ -603,7 +618,7 @@ def main(dialog):
                 msg = f"Available IP addresses to connect to SSH for this host:{addresses_str}"
             else:
                 msg = "Cannot determine available IP addresses. Please check documentation."
-            dialog.msgbox(msg, height=8)
+            wizard_dialog.msgbox(msg, height=8)
             wizard_conf["is_password_set"] = True
         except subprocess.CalledProcessError as e:
             raise WizardError(f"Failed to set 'golem' password: {str(e)}.")
@@ -641,7 +656,7 @@ def main(dialog):
                 + end_choices
         )
 
-        code, partition_tag = dialog.menu(
+        code, partition_tag = wizard_dialog.menu(
             "Select a storage partition:",
             choices=partition_choices,
             height=64,
@@ -649,7 +664,7 @@ def main(dialog):
         )
 
         if not partition_tag or partition_tag == "-":
-            if not dialog.yesno(
+            if not wizard_dialog.yesno(
                     "No persistent storage defined. Would you like to continue?"
             ):
                 return
@@ -667,13 +682,13 @@ def main(dialog):
     #
     # GLM related values
     #
-    glm_account = wizard_conf.get("glm_account", None) or dialog.inputbox(
+    glm_account = wizard_conf.get("glm_account", None) or wizard_dialog.inputbox(
         "Account for payments:"
     )
-    glm_per_hour = wizard_conf.get("glm_per_hour", None) or dialog.inputbox(
+    glm_per_hour = wizard_conf.get("glm_per_hour", None) or wizard_dialog.inputbox(
         "GLM per hour:", init="0.25"
     )
-    glm_init_price = wizard_conf.get("glm_init_price", None) or dialog.inputbox(
+    glm_init_price = wizard_conf.get("glm_init_price", None) or wizard_dialog.inputbox(
         "GLM init price:", init="0"
     )
     try:
@@ -702,12 +717,12 @@ def main(dialog):
                         msg = f"IOMMU Group '{iommu_group}' has bad isolation:\n\n"
                         for device in devices:
                             msg += "  " + device + "\n"
-                        dialog.msgbox(msg, width=640)
+                        wizard_dialog.msgbox(msg, width=640)
 
             raise WizardError("No compatible GPU available.")
 
         gpu_choices = [(gpu["description"], "") for gpu in gpu_list]
-        code, gpu_tag = dialog.menu("Select a GPU:", choices=gpu_choices, height=32)
+        code, gpu_tag = wizard_dialog.menu("Select a GPU:", choices=gpu_choices, height=32)
 
         selected_gpu = None
         for gpu in gpu_list:
@@ -716,7 +731,7 @@ def main(dialog):
                 break
 
         if selected_gpu:
-            dialog.msgbox(
+            wizard_dialog.msgbox(
                 f"Selected GPU: {selected_gpu['slot']} (VFIO: {selected_gpu['vfio']})"
             )
 
@@ -797,14 +812,11 @@ def main(dialog):
 
 
 if __name__ == "__main__":
-    wizard_dialog = WizardDialog()
     try:
-        main(wizard_dialog)
+        main()
     except KeyboardInterrupt:
         logger.error("Interrupting...")
-        wizard_dialog.msgbox("Keyboard interruyp")
     except WizardError as e:
         logger.error(f"Wizard error: {str(e)}")
-        wizard_dialog.msgbox(str(e))
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
