@@ -52,10 +52,15 @@ During the build process, two directories are defined within the Makefile and ca
 
 ## Write image to a USB stick
 
-You can use `dd` in order to write the generated image to a USB stick. Assuming your USB stick is referenced as `/dev/sda` on your system, under `work` directory:
+You can use `dd` in order to write the generated image to a USB stick. A minimal USB stick of `8GB` is required.
+
+Assuming your USB stick is referenced as `/dev/sda` on your system, under `work` directory:
 ```shell
 sudo dd if=work/golem-gpu-live.img of=/dev/sda
 ```
+
+The image contains a fourth partition for persistent storage with label `Golem storage`.
+User can use another partition for persistent storage on another disk, but it has to be formatted with any Linux compatible filesystem.
 
 ## Booting the image
 
@@ -81,9 +86,9 @@ It provided a wizard for configuring the setup of the Golem Provider software th
 
 9. **Preset Configuration:** The wizard will configure the Golem preset for resource sharing. This includes specifying the runtime, GLM account information, and pricing details. The preset will be activated for use with the Golem Provider.
 
-10. **VFIO Device Attachment (optional):** If the user chooses not to skip device passthrough, the wizard will attach the selected GPU and associated devices to VFIO (Virtual Function I/O). VFIO allows these devices to be used for virtualization and resource sharing.
+10. **VFIO Device Attachment (optional from command line only):** If the user chooses not to skip device passthrough, the wizard will attach the selected GPU and associated devices to VFIO (Virtual Function I/O). VFIO allows these devices to be used for virtualization and resource sharing.
 
-11. **Configuration Saving (optional):** The wizard may offer the option to save the configured settings for future use. If selected, the configuration details will be saved to a file for easy retrieval during subsequent system boots.
+11. **Configuration Saving (optional from command line only):** The wizard offers the option to save the configured settings for future use. If selected, the configuration details will be saved to a file for easy retrieval during subsequent system boots.
 
 12. **Error Handling:** Throughout the process, the wizard will check for errors and handle them appropriately. If any errors occur, the user will be informed, and in some cases, the wizard may automatically log the user into TTY1 to diagnose and resolve issues.
 
@@ -95,7 +100,9 @@ There is two boot options available:
 
 1. Default: When you boot your system with this option, it will automatically run the wizard without any user intervention. The wizard will guide you through the necessary setup steps, and if there are no errors, it will proceed to start the GolemSP software.
 
-2. No Autostart: By choosing this option during boot, you will skip the wizard entirely, and your system will automatically log you into TTY1.
+2. NO AUTOSTART: By choosing this option during boot, you will skip the wizard entirely, and your system will automatically log you into TTY1. Note that `golemsp` won't be start neither.
+
+> Remark: Using NO AUTOSTART allows you to reset password for `golem` user.
 
 ### Automatic TTY1 Login on Wizard Issues
 
