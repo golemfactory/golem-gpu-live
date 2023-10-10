@@ -375,20 +375,26 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
 
 
 def bind_vfio(devices):
+    inner_cmd = []
     for dev in devices:
         driver_override_path = f"/sys/bus/pci/devices/{dev}/driver_override"
         bind_path = "/sys/bus/pci/drivers/vfio-pci/bind"
         if Path(f"/sys/bus/pci/drivers/vfio-pci/{dev}").exists():
             continue
-        subprocess.run(
-            ["sudo", "bash", "-c", f'echo "vfio-pci" > "{driver_override_path}"'],
-            check=True,
-        )
-        subprocess.run(
-            ["sudo", "bash", "-c", f'echo "{dev}" > "{bind_path}"'], check=True
-        )
-
-    subprocess.run(["modprobe", "-i", "vfio-pci"], check=True)
+        inner_cmd += [
+            f'echo vfio-pci > "{driver_override_path}"',
+            f'echo "{dev}" > "{bind_path}"'
+        ]
+    inner_cmd += [
+        "echo 0 > /sys/class/vtconsole/vtcon0/bind",
+        "echo 0 > /sys/class/vtconsole/vtcon1/bind",
+        "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind",
+        "modprobe -i vfio-pci"
+    ]
+    subprocess.run(
+        ["sudo", "bash", "-c", "&&".join(inner_cmd)],
+        check=True
+    )
 
 
 class WizardDialog:
