@@ -52,6 +52,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Blacklist 'nouveau'.
 COPY vfio.conf /etc/modprobe.d/
+
+# Disable RESUME
+RUN bash -c "echo RESUME=none > /etc/initramfs-tools/conf.d/noresume.conf"
+
 RUN update-initramfs -u
 
 # Create 'golem' user.
