@@ -688,9 +688,19 @@ def main():
     #
     # GLM related values
     #
-    glm_account = wizard_conf.get("glm_account", None) or wizard_dialog.inputbox(
-        "Account for payments:"
-    )
+    glm_account = wizard_conf.get("glm_account", None)
+    while not glm_account:
+        user_input = wizard_dialog.inputbox(
+            "Account address for payments (e.g. 0x16e38329edf236b4d0bd1f6519f26bf8b52a7ebf):", width=96,
+        )
+        if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
+            glm_account = user_input
+            break
+        else:
+            wizard_dialog.msgbox(
+                "Invalid account address provided. Please ensure account address contains 40 hexadecimal digits prefixed with '0x'."
+            )
+
     glm_per_hour = wizard_conf.get("glm_per_hour", None) or wizard_dialog.inputbox(
         "GLM per hour:", init="0.25"
     )
