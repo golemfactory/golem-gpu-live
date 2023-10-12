@@ -46,6 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     fdisk \
     parted \
+    unattended-upgrades \
     golem-provider \
     golem-nvidia-kernel \
     ya-runtime-vm \
@@ -88,6 +89,9 @@ RUN ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target
 
 # Copy fstab
 COPY fstab /etc/
+
+# unattented-upgrades conf
+COPY 20auto-upgrades /etc/apt/apt.conf.d/
 
 # FIXME: This temporary until we update QEMU
 RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt \
