@@ -277,8 +277,9 @@ def fix_paths(runtime_files_dir):
         runtime_json_path.write_text(json.dumps(runtime_content, indent=4))
 
 
-def configure_storage(storage_partition):
-    dev_by_uuid = f"/dev/disk/by-uuid/{storage_partition}"
+def configure_storage(device, resize_partition):
+    uuid = device["UUID"]
+    dev_by_uuid = f"/dev/disk/by-uuid/{uuid}"
     if not os.path.exists(dev_by_uuid):
         raise WizardError("Invalid storage provided.")
 
@@ -286,6 +287,17 @@ def configure_storage(storage_partition):
 
     if not is_mount_needed(mount_point, dev_by_uuid):
         return
+    logger.critical(device)
+    logger.critical(resize_partition)
+    if resize_partition and device.get("PARTUUID", None) == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01":
+        devname_path = Path(device["DEVNAME"])
+        device = Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
+        if device and Path(f"/dev/{device}").exists():
+            subprocess.run(
+                ["sudo", "bash", "-c",
+                 f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 4 /dev/{device} && partprobe /dev/{device} && udevadm settle"],
+                check=True
+            )
 
     mount_point.mkdir(exist_ok=True)
 
@@ -674,16 +686,21 @@ def main():
                     "No persistent storage defined. Would you like to continue?"
             ):
                 return
-            storage_partition = "/notset"
+            device = {"DEVNAME": "/dev/notset"}
         else:
-            storage_partition = devices[partition_tag]["UUID"]
+            device = devices[partition_tag]
 
-        wizard_conf["storage_partition"] = storage_partition
+        wizard_conf["storage_partition"] = device
+        resize_partition = True
     else:
-        storage_partition = wizard_conf["storage_partition"]
+        device = wizard_conf["storage_partition"]
+        resize_partition = False
 
-    if storage_partition and storage_partition != "/notset":
-        configure_storage(storage_partition)
+    if device and device.get("DEVNAME", None) != "/dev/notset":
+        configure_storage(
+            device=device,
+            resize_partition=resize_partition
+        )
 
     #
     # GLM related values

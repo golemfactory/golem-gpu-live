@@ -44,6 +44,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     musl-tools \
     make \
     wget \
+    fdisk \
+    parted \
     golem-provider \
     golem-nvidia-kernel \
     ya-runtime-vm \
