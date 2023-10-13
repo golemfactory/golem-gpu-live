@@ -293,11 +293,14 @@ def configure_storage(device, resize_partition):
         devname_path = Path(device["DEVNAME"])
         device = Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
         if device and Path(f"/dev/{device}").exists():
-            subprocess.run(
-                ["sudo", "bash", "-c",
-                 f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 4 /dev/{device} && partprobe /dev/{device} && udevadm settle"],
-                check=True
-            )
+            disk_operations = [
+                f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 4 /dev/{device}",
+                f"partprobe /dev/{device}",
+                "udevadm settle",
+                f"e2fsck -fy /dev/{device}",
+                f"resize2fs /dev/{device}"
+            ]
+            subprocess.run(["sudo", "bash", "-c", "&&".join(disk_operations)], check=True)
 
     mount_point.mkdir(exist_ok=True)
 
