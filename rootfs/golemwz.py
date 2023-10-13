@@ -296,8 +296,8 @@ def configure_storage(device, resize_partition):
                 f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 4 /dev/{device}",
                 f"partprobe /dev/{device}",
                 "udevadm settle",
-                f"e2fsck -fy /dev/{device}",
-                f"resize2fs /dev/{device}4"
+                f"e2fsck -fy {devname_path}",
+                f"resize2fs {devname_path}"
             ]
             subprocess.run(["sudo", "bash", "-c", "&&".join(disk_operations)], check=True)
 
