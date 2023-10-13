@@ -600,6 +600,7 @@ def main():
     # TERMS OF USE
     #
 
+    logging.info("Check accepted license terms.")
     if not wizard_conf.get("accepted_terms", False):
         if not wizard_dialog.yesno(
                 "By installing & running this software you declare that you have read, understood and hereby accept the "
@@ -614,6 +615,7 @@ def main():
     # STORAGE
     #
 
+    logging.info("Configure storage.")
     if not wizard_conf.get("storage_partition", None):
         devices = get_filtered_blkid_output()
 
@@ -672,13 +674,14 @@ def main():
         )
 
     if args.storage_only:
-        logger.info("Storage configured. Exiting now.")
+        logger.info("Storage configured. Only storage configuration requested, exiting now.")
         return
 
     #
     # CONFIGURE PASSWORD
     #
 
+    logging.info("Configure user password.")
     if not wizard_conf.get("is_password_set", False):
         try:
             password = get_random_string(14)
@@ -725,6 +728,8 @@ def main():
     #
     # GLM related values
     #
+    logging.info("Configure GLM values.")
+
     glm_account = wizard_conf.get("glm_account", None)
     while not glm_account:
         user_input = wizard_dialog.inputbox(
@@ -758,6 +763,7 @@ def main():
     # GPU
     #
 
+    logging.info("Configure GPU.")
     if not wizard_conf.get("gpu", None):
         gpu_list, bad_isolation_groups = select_gpu_compatible(
             allow_pci_bridge=not args.no_relax_gpu_isolation
@@ -799,6 +805,7 @@ def main():
     # CONFIGURE RUNTIME
     #
 
+    logging.info("Configure runtime.")
     # Copy missing runtime JSONs. We assume that GOLEM bins will update them if they exist.
     plugins_dir = Path("~").expanduser() / ".local/lib/yagna/plugins"
     plugins_dir.mkdir(parents=True, exist_ok=True)
@@ -830,6 +837,7 @@ def main():
     # CONFIGURE PRESET
     #
 
+    logging.info("Configure preset.")
     try:
         configure_preset(
             runtime_id="vm-nvidia",
@@ -845,6 +853,7 @@ def main():
     # VFIO
     #
 
+    logging.info("Configure passthrough.")
     if not args.no_passthrough:
         try:
             bind_vfio(selected_gpu["devices"])
@@ -863,6 +872,7 @@ def main():
     # Save running config
     #
 
+    logging.info("Save Wizard configuration file.")
     if not args.no_save:
         try:
             wizard_conf_path.write_text(json.dumps(wizard_conf, indent=4))
