@@ -505,6 +505,7 @@ def parse_args():
         default=False,
         help="Don't allow PCI bridge on which the GPU is connected in the same IOMMU group.",
     )
+    parser.add_argument("--storage-only", action="store_true", default=False, help="Configure only persistent storage.")
     parser.add_argument("--glm-account", default=None, help="Account for payments.")
     parser.add_argument(
         "--glm-per-hour", default=None, help="Recommended default value is 0.25."
@@ -520,11 +521,6 @@ def parse_args():
         default=[],
         action="append",
         help="List of PCI slot IDs to assign to VFIO.",
-    )
-    parser.add_argument(
-        "--storage-partition",
-        default=None,
-        help="Device UUID partition to use for persistent storage. Using '/notset' allows to skip storage mount.",
     )
     parser.add_argument(
         "--no-passthrough",
@@ -568,9 +564,6 @@ def main():
             wizard_conf.update(json.loads(wizard_conf_path.read_text()))
         except json.JSONDecodeError as e:
             logger.error(f"Failed to read configuration file: {str(e)}")
-
-    if args.storage_partition:
-        wizard_conf["storage_partition"] = args.storage_partition
 
     if args.glm_account:
         wizard_conf["glm_account"] = args.glm_account
@@ -616,53 +609,6 @@ def main():
 
         # Save it in conf
         wizard_conf["accepted_terms"] = True
-
-    #
-    # CONFIGURE PASSWORD
-    #
-
-    if not wizard_conf.get("is_password_set", False):
-        try:
-            password = get_random_string(14)
-            subprocess.run(
-                [
-                    "sudo",
-                    "passwd",
-                    "golem",
-                ],
-                check=True,
-                capture_output=True,
-                input=f"{password}\n{password}".encode(),
-            )
-            wizard_dialog.msgbox(
-                f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
-            )
-
-            # Setup timeout for letting nm-online detecting activation
-            cur = 0
-            timeout = 30
-            wizard_dialog.dialog.gauge_start("Progress: 0%", title="Waiting for network activation...")
-            process = subprocess.Popen(["nm-online", "--timeout", str(timeout)], stdout=subprocess.DEVNULL)
-            while cur <= timeout:
-                if process.poll() is not None:
-                    wizard_dialog.dialog.gauge_update(100, "Progress: 100%", update_text=True)
-                    break
-                update = int(100 * cur / timeout)
-                wizard_dialog.dialog.gauge_update(update, "Progress: {0}%".format(update), update_text=True)
-                time.sleep(1)
-                cur += 1
-            wizard_dialog.dialog.gauge_stop()
-
-            # We rely on nm-online saying it has found activated connections
-            if process.poll() == 0 and get_ip_addresses():
-                addresses_str = "\n- " + "\n- ".join(get_ip_addresses())
-                msg = f"Available IP addresses to connect to SSH for this host:{addresses_str}"
-            else:
-                msg = "Cannot determine available IP addresses. Please check documentation."
-            wizard_dialog.msgbox(msg, height=8)
-            wizard_conf["is_password_set"] = True
-        except subprocess.CalledProcessError as e:
-            raise WizardError(f"Failed to set 'golem' password: {str(e)}.")
 
     #
     # STORAGE
@@ -724,6 +670,57 @@ def main():
             device=device,
             resize_partition=resize_partition
         )
+
+    if args.storage_only:
+        logger.info("Storage configured. Exiting now.")
+        return
+
+    #
+    # CONFIGURE PASSWORD
+    #
+
+    if not wizard_conf.get("is_password_set", False):
+        try:
+            password = get_random_string(14)
+            subprocess.run(
+                [
+                    "sudo",
+                    "passwd",
+                    "golem",
+                ],
+                check=True,
+                capture_output=True,
+                input=f"{password}\n{password}".encode(),
+            )
+            wizard_dialog.msgbox(
+                f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
+            )
+
+            # Setup timeout for letting nm-online detecting activation
+            cur = 0
+            timeout = 30
+            wizard_dialog.dialog.gauge_start("Progress: 0%", title="Waiting for network activation...")
+            process = subprocess.Popen(["nm-online", "--timeout", str(timeout)], stdout=subprocess.DEVNULL)
+            while cur <= timeout:
+                if process.poll() is not None:
+                    wizard_dialog.dialog.gauge_update(100, "Progress: 100%", update_text=True)
+                    break
+                update = int(100 * cur / timeout)
+                wizard_dialog.dialog.gauge_update(update, "Progress: {0}%".format(update), update_text=True)
+                time.sleep(1)
+                cur += 1
+            wizard_dialog.dialog.gauge_stop()
+
+            # We rely on nm-online saying it has found activated connections
+            if process.poll() == 0 and get_ip_addresses():
+                addresses_str = "\n- " + "\n- ".join(get_ip_addresses())
+                msg = f"Available IP addresses to connect to SSH for this host:{addresses_str}"
+            else:
+                msg = "Cannot determine available IP addresses. Please check documentation."
+            wizard_dialog.msgbox(msg, height=8)
+            wizard_conf["is_password_set"] = True
+        except subprocess.CalledProcessError as e:
+            raise WizardError(f"Failed to set 'golem' password: {str(e)}.")
 
     #
     # GLM related values

@@ -56,7 +56,7 @@ To create the live image, follow these steps:
 make root image
 ```
 
-This command will build the Docker image and then use it to generate the live image. The resulting image `golem-gpu-live.img` will be located in the `work` directory within the project folder.
+This command will build the Docker image and then use it to generate the live image. The resulting image `golem-gpu-live-VERSION.img` will be located in the `work` directory within the project folder.
 
 During the build process, two directories are defined within the Makefile and can be customized with specific paths if desired:
 - TMP_DIR (Temporary Directory): A variable representing the temporary directory used during the build process to store intermediate files.
@@ -70,7 +70,7 @@ You can use `dd` in order to write the generated image to a USB stick. A minimal
 
 Assuming your USB stick is referenced as `/dev/sda` on your system, under `work` directory:
 ```shell
-sudo dd if=work/golem-gpu-live.img of=/dev/sda
+sudo dd if=work/golem-gpu-live-VERSION.img of=/dev/sda
 ```
 
 The image contains a fourth partition for persistent storage with label `Golem storage`. It contains a hard-coded value for `PARTUUID` and if selected later for storage, it would be resized to the maximum available space remaining on the USB stick.
@@ -111,9 +111,36 @@ It provided a wizard for configuring the setup of the Golem Provider software th
 
 These steps provide an overview of what the wizard is expected to do.
 
+### Wizard - command line usage
+
+```bash
+usage: golemwz [-h] [--debug] [--no-relax-gpu-isolation] [--storage-only] [--glm-account GLM_ACCOUNT]
+                  [--glm-per-hour GLM_PER_HOUR] [--init-price INIT_PRICE] [--gpu-pci-slot GPU_PCI_SLOT]
+                  [--vfio-devices VFIO_DEVICES] [--no-passthrough] [--no-save]
+
+options:
+  -h, --help            show this help message and exit
+  --debug
+  --no-relax-gpu-isolation
+                        Don't allow PCI bridge on which the GPU is connected in the same IOMMU group.
+  --storage-only        Configure only persistent storage.
+  --glm-account GLM_ACCOUNT
+                        Account for payments.
+  --glm-per-hour GLM_PER_HOUR
+                        Recommended default value is 0.25.
+  --init-price INIT_PRICE
+                        For testing set it to 0.
+  --gpu-pci-slot GPU_PCI_SLOT
+                        GPU PCI slot ID. For example, '0000:01:00.1'.
+  --vfio-devices VFIO_DEVICES
+                        List of PCI slot IDs to assign to VFIO.
+  --no-passthrough      Don't attach devices to VFIO.
+  --no-save             Don't save running configuration.
+```
+
 ### Boot Options
 
-There is two boot options available:
+There are two boot options available:
 
 1. Default: When you boot your system with this option, it will automatically run the wizard without any user intervention. The wizard will guide you through the necessary setup steps, and if there are no errors, it will proceed to start the GolemSP software.
 
