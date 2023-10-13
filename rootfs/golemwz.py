@@ -297,7 +297,7 @@ def configure_storage(device, resize_partition):
                 f"partprobe /dev/{device}",
                 "udevadm settle",
                 f"e2fsck -fy /dev/{device}",
-                f"resize2fs /dev/{device}"
+                f"resize2fs /dev/{device}4"
             ]
             subprocess.run(["sudo", "bash", "-c", "&&".join(disk_operations)], check=True)
 
@@ -541,8 +541,24 @@ def parse_args():
     return parser.parse_args()
 
 
+def setup_logging(debug=False):
+    log_filename = Path("~").expanduser().resolve() / "golemwz.log"
+    logging.basicConfig(
+        filename=log_filename,
+        level=logging.DEBUG if debug else logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(message)s",
+    )
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+    console_handler.setFormatter(console_formatter)
+    logging.getLogger().addHandler(console_handler)
+
+
 def main():
     args = parse_args()
+
+    setup_logging(args.debug)
 
     wizard_conf = {}
     wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.conf"
