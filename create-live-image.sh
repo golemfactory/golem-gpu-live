@@ -10,27 +10,23 @@ MNTDIR="${WORKDIR}/mnt"
 
 function cleanup() {
     local mountdir="$1"
-    local imgfile="$2"
 
     if mountpoint -q "${mountdir}"; then
-        umount "${mountdir}/boot/efi" || true
-        umount "${mountdir}"
+        umount -f -l "${mountdir}/boot/efi" || true
+        umount -f -l "${mountdir}"
     fi
 
-    if [ -e "${imgfile}" ]; then
-        img_loop=$(/sbin/losetup -O name -n -j "${imgfile}")
-        if [ -n "${img_loop}" ]; then
-            losetup -d "${img_loop}"
-        fi
+    if [ -n "${IMG_LOOP:-}" ]; then
+        losetup -d "${IMG_LOOP:-}"
     fi
 }
 
 # Cleanup
-cleanup "${MNTDIR}" "${IMG}"
+cleanup "${MNTDIR}"
 rm -rf "${WORKDIR}/golem-gpu-live-*.img"
 
 # Trap for cleanup mount points
-trap "cleanup ${MNTDIR} ${IMG}" EXIT
+trap "cleanup ${MNTDIR}" 0 1 2 3 6 15
 
 truncate -s 6G "${IMG}"
 

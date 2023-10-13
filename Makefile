@@ -4,6 +4,7 @@ WORK_DIR ?= $(LOCAL_DIR)/work
 TMP_DIR ?= $(LOCAL_DIR)/tmp
 
 BUILD_ARGS ?=
+VERSION ?=
 
 all: image iso
 
@@ -12,7 +13,7 @@ root:
 	sudo ./get-merged-rootfs.sh golem-gpu-live $(TMP_DIR) $(WORK_DIR)
 
 image:
-	sudo $(LOCAL_DIR)/create-live-image.sh $(WORK_DIR)
+	sudo $(LOCAL_DIR)/create-live-image.sh $(WORK_DIR) $(VERSION)
 
 iso:
 	sudo $(LOCAL_DIR)/create-live-iso.sh $(WORK_DIR)
