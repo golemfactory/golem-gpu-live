@@ -4,7 +4,8 @@ set -eux -o pipefail
 
 LOCALDIR="$(readlink -f "$(dirname "$0")")"
 WORKDIR="${1:-"${LOCALDIR}/work"}"
-IMG="${WORKDIR}/golem-gpu-live.img"
+VERSION="${2:-"$(date --utc +%y%m%dT%H%M%SZ)"}"
+IMG="${WORKDIR}/golem-gpu-live-${VERSION}.img"
 MNTDIR="${WORKDIR}/mnt"
 
 function cleanup() {
@@ -21,7 +22,7 @@ function cleanup() {
 
 # Cleanup
 cleanup "${MNTDIR}" "${IMG}"
-rm -f "${IMG}"
+rm -rf "${WORKDIR}/golem-gpu-live-*.img"
 
 # Trap for cleanup mount points
 trap "cleanup ${MNTDIR} ${IMG}" EXIT
