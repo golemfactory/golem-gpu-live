@@ -350,9 +350,10 @@ def configure_runtime(runtime_path, selected_gpu):
 def configure_preset(runtime_id, account, duration_price, cpu_price, init_price):
     env = get_env()
 
-    golemsp_setup_cmd = ["golemsp", "setup", "--no-interactive"]
-    if account:
-        golemsp_setup_cmd += ["--account", account]
+    if not account:
+        raise WizardError("Wallet account address must be provided to set up the preset!")
+
+    golemsp_setup_cmd = ["golemsp", "setup", "--no-interactive", "--account", account]
     subprocess.run(golemsp_setup_cmd, check=True, env=env)
 
     pre_install_cmd = ["ya-provider", "pre-install"]
@@ -387,7 +388,14 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
 
 
 def bind_vfio(devices):
-    inner_cmd = []
+    inner_cmd = [
+        "echo 0 > /sys/class/vtconsole/vtcon0/bind",
+        "echo 0 > /sys/class/vtconsole/vtcon1/bind",
+    ]
+    if Path("/sys/bus/platform/drivers/efi-framebuffer/efi-framebuffer.0").exists():
+        inner_cmd += [
+            "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind"
+        ]
     for dev in devices:
         driver_override_path = f"/sys/bus/pci/devices/{dev}/driver_override"
         bind_path = "/sys/bus/pci/drivers/vfio-pci/bind"
@@ -398,9 +406,6 @@ def bind_vfio(devices):
             f'echo "{dev}" > "{bind_path}"'
         ]
     inner_cmd += [
-        "echo 0 > /sys/class/vtconsole/vtcon0/bind",
-        "echo 0 > /sys/class/vtconsole/vtcon1/bind",
-        "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind",
         "modprobe -i vfio-pci"
     ]
     subprocess.run(
@@ -586,10 +591,6 @@ def main():
                 "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
         ):
             return
-        # Create the same file as "as-provider" script
-        terms_path = Path("~").expanduser() / ".local/share/ya-installer/terms"
-        terms_path.mkdir(parents=True, exist_ok=True)
-        (terms_path / "testnet-01.tag").write_text("")
 
         # Save it in conf
         wizard_conf["accepted_terms"] = True
@@ -832,6 +833,12 @@ def main():
             raise WizardError(
                 f"Failed to attach devices to VFIO: {str(e)}. Already bound?"
             )
+
+    # Create the same file as "as-provider" script
+    terms_path = Path("~").expanduser() / ".local/share/ya-installer/terms"
+    terms_path.mkdir(parents=True, exist_ok=True)
+    if not (terms_path / "testnet-01.tag").exists():
+        (terms_path / "testnet-01.tag").write_text("")
 
     #
     # Save running config
