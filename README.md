@@ -5,6 +5,20 @@
 The **golem-gpu-live** project allows you to create a live image for a GOLEM provider with NVIDIA GPU.
 This README provides instructions on how to set up the necessary dependencies and create the image using the provided Makefile.
 
+## Prerequisites
+
+Before attempting to use a GOLEM live image, make sure you have the following hardware requirements in place:
+
+1. **Motherboard and CPU Support**: Verify that your motherboard and CPU support IOMMU (Input-Output Memory Management Unit) virtualization. You can often enable this in the BIOS or UEFI settings.
+
+2. **IOMMU Groups**: Ensure that your passthrough GPU is isolated in its own IOMMU group. You can check this using the `lspci` command. If the GPU is in a group with other devices, you may need to put it into a separate PCIe slot. Installer wizard form GOLEM live image will check for that.
+
+3. **NVIDIA GPU**: Your passthrough GPU must be an NVIDIA card. Some older NVIDIA GPUs may require workarounds due to driver restrictions.
+
+4. **Additional GPU for Console Access (optional)**: For convenience, it's helpful to have a second GPU (integrated or low-end) to provide console access to your host machine.
+
+> **Disclaimer**: Setting up GPU passthrough is a complex process and may vary depending on your hardware configuration.
+
 ## Dependencies
 
 Before you can create the live image, you need to install several dependencies. Run the following command to install them:
