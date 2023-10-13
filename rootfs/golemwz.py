@@ -287,8 +287,7 @@ def configure_storage(device, resize_partition):
 
     if not is_mount_needed(mount_point, dev_by_uuid):
         return
-    logger.critical(device)
-    logger.critical(resize_partition)
+
     if resize_partition and device.get("PARTUUID", None) == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01":
         devname_path = Path(device["DEVNAME"])
         device = Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
