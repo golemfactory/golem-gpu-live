@@ -353,6 +353,9 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
     if not account:
         raise WizardError("Wallet account address must be provided to set up the preset!")
 
+    # FIXME: golemsp passing args is not working at the time of writing
+    env["YA_ACCOUNT"] = account
+
     golemsp_setup_cmd = ["golemsp", "setup", "--no-interactive", "--account", account]
     subprocess.run(golemsp_setup_cmd, check=True, env=env)
 
