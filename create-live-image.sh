@@ -15,8 +15,13 @@ function cleanup() {
     if mountpoint -q "${mountdir}"; then
         umount "${mountdir}/boot/efi" || true
         umount "${mountdir}"
-        img_loop=$(/sbin/losetup -P -f --show "$imgfile")
-        losetup -d "${img_loop}"
+    fi
+
+    if [ -e "${imgfile}" ]; then
+        img_loop=$(/sbin/losetup -O name -n -j "${imgfile}")
+        if [ -n "${img_loop}" ]; then
+            losetup -d "${img_loop}"
+        fi
     fi
 }
 
