@@ -708,8 +708,8 @@ def main():
     glm_account = wizard_conf.get("glm_account", None)
     while not glm_account:
         user_input = wizard_dialog.inputbox(
-            "Account address for payments (e.g. 0x16e38329edf236b4d0bd1f6519f26bf8b52a7ebf):", width=96,
-        )
+            "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):", width=96
+        ) or "0xDaa04647e8ecb616801F9bE89712771F6D291a0C"
         if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
             glm_account = user_input
             break
@@ -720,10 +720,10 @@ def main():
 
     glm_per_hour = wizard_conf.get("glm_per_hour", None) or wizard_dialog.inputbox(
         "GLM per hour:", init="0.25"
-    )
+    ) or 0.25
     glm_init_price = wizard_conf.get("glm_init_price", None) or wizard_dialog.inputbox(
         "GLM init price:", init="0"
-    )
+    ) or 0
     try:
         cpu_price = float(glm_per_hour) / 3600.0
         duration_price = cpu_price / 5.0
