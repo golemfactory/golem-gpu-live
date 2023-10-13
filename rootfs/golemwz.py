@@ -391,14 +391,7 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
 
 
 def bind_vfio(devices):
-    inner_cmd = [
-        "echo 0 > /sys/class/vtconsole/vtcon0/bind",
-        "echo 0 > /sys/class/vtconsole/vtcon1/bind",
-    ]
-    if Path("/sys/bus/platform/drivers/efi-framebuffer/efi-framebuffer.0").exists():
-        inner_cmd += [
-            "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind"
-        ]
+    inner_cmd = []
     for dev in devices:
         driver_override_path = f"/sys/bus/pci/devices/{dev}/driver_override"
         bind_path = "/sys/bus/pci/drivers/vfio-pci/bind"
@@ -407,6 +400,14 @@ def bind_vfio(devices):
         inner_cmd += [
             f'echo vfio-pci > "{driver_override_path}"',
             f'echo "{dev}" > "{bind_path}"'
+        ]
+    inner_cmd += [
+        "echo 0 > /sys/class/vtconsole/vtcon0/bind",
+        "echo 0 > /sys/class/vtconsole/vtcon1/bind",
+    ]
+    if Path("/sys/bus/platform/drivers/efi-framebuffer/efi-framebuffer.0").exists():
+        inner_cmd += [
+            "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind"
         ]
     inner_cmd += [
         "modprobe -i vfio-pci"
