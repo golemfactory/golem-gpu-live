@@ -498,19 +498,38 @@ class WizardDialog:
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--debug", action="store_true", default=False)
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=False
+    )
     parser.add_argument(
         "--no-relax-gpu-isolation",
         action="store_true",
         default=False,
         help="Don't allow PCI bridge on which the GPU is connected in the same IOMMU group.",
     )
-    parser.add_argument("--storage-only", action="store_true", default=False, help="Configure only persistent storage.")
-    parser.add_argument("--glm-account", default=None, help="Account for payments.")
     parser.add_argument(
-        "--glm-per-hour", default=None, help="Recommended default value is 0.25."
+        "--storage-only",
+        action="store_true",
+        default=False,
+        help="Configure only persistent storage."
     )
-    parser.add_argument("--init-price", default=None, help="For testing set it to 0.")
+    parser.add_argument(
+        "--glm-account",
+        default=None,
+        help="Account for payments."
+    )
+    parser.add_argument(
+        "--glm-per-hour",
+        default=None,
+        help="Recommended default value is 0.25."
+    )
+    parser.add_argument(
+        "--init-price",
+        default=None,
+        help="For testing set it to 0."
+    )
     parser.add_argument(
         "--gpu-pci-slot",
         default=None,
@@ -728,8 +747,8 @@ def main():
     #
     # GLM related values
     #
-    logging.info("Configure GLM values.")
 
+    logging.info("Configure GLM values.")
     glm_account = wizard_conf.get("glm_account", None)
     while not glm_account:
         user_input = wizard_dialog.inputbox(
@@ -806,48 +825,53 @@ def main():
     #
 
     logging.info("Configure runtime.")
-    # Copy missing runtime JSONs. We assume that GOLEM bins will update them if they exist.
-    plugins_dir = Path("~").expanduser() / ".local/lib/yagna/plugins"
-    plugins_dir.mkdir(parents=True, exist_ok=True)
+    if not wizard_conf.get("runtime_configured", False):
+        # Copy missing runtime JSONs. We assume that GOLEM bins will update them if they exist.
+        plugins_dir = Path("~").expanduser() / ".local/lib/yagna/plugins"
+        plugins_dir.mkdir(parents=True, exist_ok=True)
 
-    for runtime_json in Path("/usr/lib/yagna/plugins/").glob("ya-*.json"):
-        if not (plugins_dir / runtime_json.name).exists():
-            shutil.copy2(runtime_json, plugins_dir)
+        for runtime_json in Path("/usr/lib/yagna/plugins/").glob("ya-*.json"):
+            if not (plugins_dir / runtime_json.name).exists():
+                shutil.copy2(runtime_json, plugins_dir)
 
-    runtime_path = (
-        (Path("~").expanduser() / ".local/lib/yagna/plugins/ya-runtime-vm.json")
-        .expanduser()
-        .resolve()
-    )
-    if not runtime_path:
-        raise WizardError(f"Cannot find runtime configuration file '{runtime_path}'.")
+        runtime_path = (
+            (Path("~").expanduser() / ".local/lib/yagna/plugins/ya-runtime-vm.json")
+            .expanduser()
+            .resolve()
+        )
+        if not runtime_path:
+            raise WizardError(f"Cannot find runtime configuration file '{runtime_path}'.")
 
-    configure_runtime(runtime_path, selected_gpu)
+        configure_runtime(runtime_path, selected_gpu)
 
-    #
-    # FIX SUPERVISOR AND RUNTIME PATHS
-    #
+        #
+        # FIX SUPERVISOR AND RUNTIME PATHS
+        #
 
-    runtime_files_dir = (
-        (Path("~").expanduser() / ".local/lib/yagna/plugins/").expanduser().resolve()
-    )
-    fix_paths(runtime_files_dir)
+        runtime_files_dir = (
+            (Path("~").expanduser() / ".local/lib/yagna/plugins/").expanduser().resolve()
+        )
+        fix_paths(runtime_files_dir)
+
+        wizard_conf["runtime_configured"] = True
 
     #
     # CONFIGURE PRESET
     #
 
     logging.info("Configure preset.")
-    try:
-        configure_preset(
-            runtime_id="vm-nvidia",
-            account=glm_account,
-            duration_price=duration_price,
-            cpu_price=cpu_price,
-            init_price=glm_init_price,
-        )
-    except subprocess.CalledProcessError as e:
-        raise WizardError(f"Failed to configure preset: {str(e)}.")
+    if not wizard_conf.get("preset_configured", False):
+        try:
+            configure_preset(
+                runtime_id="vm-nvidia",
+                account=glm_account,
+                duration_price=duration_price,
+                cpu_price=cpu_price,
+                init_price=glm_init_price,
+            )
+            wizard_conf["preset_configured"] = True
+        except subprocess.CalledProcessError as e:
+            raise WizardError(f"Failed to configure preset: {str(e)}.")
 
     #
     # VFIO
