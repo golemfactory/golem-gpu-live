@@ -6,6 +6,7 @@ ConditionKernelCommandLine=!skip_autostart
 
 [Service]
 ExecStart=/usr/bin/golemsp run
+Restart=always
 Type=simple
 User=golem
 Group=golem
