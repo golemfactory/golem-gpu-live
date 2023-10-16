@@ -1,6 +1,7 @@
 [Unit]
 Description=GOLEM SP Boot
-After=golemwz.service
+Wants=network-online.target
+After=network-online.target golemwz.service
 ConditionKernelCommandLine=!skip_autostart
 
 [Service]
