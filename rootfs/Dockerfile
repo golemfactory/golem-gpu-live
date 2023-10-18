@@ -49,7 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unattended-upgrades \
     golem-provider \
     golem-nvidia-kernel \
-    ya-runtime-vm \
+    ya-runtime-vm-nvidia \
     ya-runtime-wasi-cli \
     ya-installer-resources && apt-get clean
 
@@ -97,13 +97,6 @@ COPY 20auto-upgrades /etc/apt/apt.conf.d/
 RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt \
        /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt.orig
 RUN ln -s /usr/bin/qemu-system-x86_64 /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt
-
-# FIXME: This is temporary until ya-runtime-vm-nvidia gets deb package
-RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/self-test.gvmi \
-        /usr/lib/yagna/plugins/ya-runtime-vm/runtime/self-test.gvmi.orig
-RUN bash -c "curl -L 'https://github.com/golemfactory/ya-runtime-vm-nvidia/releases/download/pre-rel-v0.1.3-rc1/ya-runtime-vm-nvidia-linux-pre-rel-v0.1.3-rc1.tar.gz' \
-        | tar xzO ya-runtime-vm-nvidia-linux-pre-rel-v0.1.3-rc1/ya-runtime-vm-nvidia/runtime/self-test.gvmi \
-        > /usr/lib/yagna/plugins/ya-runtime-vm/runtime/self-test.gvmi"
 
 # Copy GOLEM Wizard and Systemd service
 COPY golemwz.py /usr/local/bin/golemwz

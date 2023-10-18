@@ -338,8 +338,6 @@ def preset_exists(runtime_id):
 
 def configure_runtime(runtime_path, selected_gpu):
     runtime_content = json.loads(runtime_path.read_text())
-    # We rename default vm runtime name as we override its content
-    runtime_content[0]["name"] = "vm-nvidia"
     runtime_gpu_arg = f"--runtime-arg=--pci-device={selected_gpu['slot']}"
     runtime_content[0].setdefault("extra-args", [])
     if runtime_gpu_arg not in runtime_content[0]["extra-args"]:
@@ -835,7 +833,7 @@ def main():
                 shutil.copy2(runtime_json, plugins_dir)
 
         runtime_path = (
-            (Path("~").expanduser() / ".local/lib/yagna/plugins/ya-runtime-vm.json")
+            (Path("~").expanduser() / ".local/lib/yagna/plugins/ya-runtime-vm-nvidia.json")
             .expanduser()
             .resolve()
         )
