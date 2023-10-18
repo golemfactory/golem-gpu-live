@@ -93,11 +93,6 @@ COPY fstab /etc/
 # unattented-upgrades conf
 COPY 20auto-upgrades /etc/apt/apt.conf.d/
 
-# FIXME: This temporary until we update QEMU
-RUN mv /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt \
-       /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt.orig
-RUN ln -s /usr/bin/qemu-system-x86_64 /usr/lib/yagna/plugins/ya-runtime-vm/runtime/vmrt
-
 # Copy GOLEM Wizard and Systemd service
 COPY golemwz.py /usr/local/bin/golemwz
 COPY golemwz-wrapper.sh /usr/local/bin/golemwz-wrapper
