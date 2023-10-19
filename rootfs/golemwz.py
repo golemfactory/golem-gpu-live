@@ -751,9 +751,12 @@ def main():
     while not glm_account:
         user_input = wizard_dialog.inputbox(
             "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):", width=96
-        ) or "0xDaa04647e8ecb616801F9bE89712771F6D291a0C"
+        )
         if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
             glm_account = user_input
+            break
+        elif user_input and user_input == "/notset":
+            glm_account = "0xDaa04647e8ecb616801F9bE89712771F6D291a0C"
             break
         else:
             wizard_dialog.msgbox(

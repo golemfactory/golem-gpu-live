@@ -19,4 +19,4 @@ iso:
 	sudo $(LOCAL_DIR)/create-live-iso.sh $(WORK_DIR)
 
 clean:
-	rm -rf $(WORK_DIR) $(TMP_DIR)
+	sudo rm -rf $(WORK_DIR) $(TMP_DIR)
