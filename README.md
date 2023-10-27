@@ -87,11 +87,11 @@ It provided a wizard for configuring the setup of the Golem Provider software th
 
 1. **Terms of Use Acceptance:** The wizard will check if the user has accepted the terms of use for the Golem Provider software. If the terms have not been accepted, the wizard will display a message requesting the user's agreement. The user can accept or decline the terms.
 
-2. **Password Setup:** If a password for the 'golem' user has not been set previously, the wizard will generate a random password for this user account. It will use the `passwd` command to set the password for the 'golem' user. The generated password will be displayed to the user, and they are encouraged to save it securely.
+2. **Persistent Storage Configuration:** The wizard will prompt the user to select a storage partition. It will display a list of available partitions and allow the user to choose one for use as persistent storage. The selected storage partition will be used for storing data related to the Golem Provider.
 
-3. **Network Configuration:** Check for network connectivity using `nm-online` and displaying available IP addresses.
+3. **Password Setup:** If a password for the 'golem' user has not been set previously, the wizard will generate a random password for this user account. It will use the `passwd` command to set the password for the 'golem' user. The generated password will be displayed to the user, and they are encouraged to save it securely.
 
-4. **Persistent Storage Configuration:** The wizard will prompt the user to select a storage partition. It will display a list of available partitions and allow the user to choose one for use as persistent storage. The selected storage partition will be used for storing data related to the Golem Provider.
+4. **Network Configuration:** Check for network connectivity using `nm-online` and displaying available IP addresses.
 
 5. **GLM (Golem Network Token) Configuration:** The user will be prompted to provide their GLM account information, including the GLM account name, GLM per hour rate, and GLM initial price. These values are essential for participating in the Golem Network and setting pricing for resource sharing.
 
