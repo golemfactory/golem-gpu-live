@@ -165,10 +165,10 @@ def select_gpu_compatible(allow_pci_bridge=True):
 
         # Check if we have:
         # 1. Only allowed devices
-        # 2. At most one PCI bridge device
-        # 3. At most one PCI audio device
+        # 2. At most, one PCI bridge device
+        # 3. At most, one PCI audio device
         # 4. Only one GPU (we checked that one exists before)
-        # 5. PCI bridge device being parent of GPU device
+        # 5. PCI bridge device is the parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
                 not has_only_allowed_devices(parsed_devices, devices)
