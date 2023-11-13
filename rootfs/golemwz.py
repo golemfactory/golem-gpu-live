@@ -189,7 +189,7 @@ def select_gpu_compatible(allow_pci_bridge=True):
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
         vfio_devices = (
-                parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices[PCI_AUDIO_CLASS_ID]
+                parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices.get(PCI_AUDIO_CLASS_ID, [])
         )
         vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
 
