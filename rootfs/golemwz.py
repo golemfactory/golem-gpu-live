@@ -101,7 +101,7 @@ def list_pci_devices_in_iommu_group(devices):
     return [get_pci_full_string_description_from_slot(device) for device in devices]
 
 
-def get_pid_vid_from_slot(slot):
+def get_vid_pid_from_slot(slot):
     result = subprocess.run(["lspci", "-n", "-s", slot], capture_output=True, text=True)
     return result.stdout.split()[2]
 
@@ -191,7 +191,16 @@ def select_gpu_compatible(allow_pci_bridge=True):
         vfio_devices = (
                 parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices.get(PCI_AUDIO_CLASS_ID, [])
         )
-        vfio = ",".join(get_pid_vid_from_slot(device) for device in vfio_devices)
+        nvidia_vid_pid_devices = []
+        for device in vfio_devices:
+            vid_pid_device = get_vid_pid_from_slot(device)
+            vid, pid = vid_pid_device.split(":")
+            # NVIDIA vendor ID is '10DE'
+            if vid.lower() != "10de":
+                continue
+            nvidia_vid_pid_devices.append(vid_pid_device)
+
+        vfio = ",".join(nvidia_vid_pid_devices)
 
         gpu_list.append(
             {
@@ -595,7 +604,7 @@ def main():
         wizard_conf["gpu"] = {
             "slot": args.gpu_pci_slot,
             "devices": args.vfio_devices,
-            "vfio": ",".join(get_pid_vid_from_slot(dev) for dev in args.vfio_devices),
+            "vfio": ",".join(get_vid_pid_from_slot(dev) for dev in args.vfio_devices),
             "description": get_pci_full_string_description_from_slot(args.gpu_pci_slot),
         }
 
