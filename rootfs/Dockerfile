@@ -102,3 +102,7 @@ RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.tar
 
 COPY golemsp.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants/
+
+# Setup motd
+RUN bash -c "rm -rf /etc/update-motd.d/*"
+COPY 00-header /etc/update-motd.d/

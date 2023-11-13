@@ -151,3 +151,12 @@ There are two boot options available:
 ### Automatic TTY1 Login on Wizard Issues
 
 In the event of any issues or errors encountered during the execution of the wizard, your system will automatically log you into TTY1. This allows you to access a terminal interface to diagnose and resolve any problems that may have occurred during the wizard's execution.
+
+The Wizard logfile is located at `~/golemwz.log`.
+
+Yagna logfiles reside in the persistent storage selected during the wizard configuration.
+If you've booted into 'NO AUTOSTART' mode and storage has already been configured, you need to mount it using the wizard itself:
+```shell
+golemwz --storage-only
+```
+The log files are located into `~/.local/share/yagna`.
