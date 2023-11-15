@@ -77,16 +77,17 @@ cp "${LOCALDIR}/live/grub.cfg" "${MNTDIR}/boot/grub/"
 
 # Copy EFI/modern boot required files
 mkdir -p "${MNTDIR}/boot/grub/x86_64-efi/"
-cp -r /usr/lib/grub/x86_64-efi/* "${MNTDIR}/boot/grub/x86_64-efi/"
+cp -r "${WORKDIR}/rootfs/usr/lib/grub/x86_64-efi"/* "${MNTDIR}/boot/grub/x86_64-efi/"
 
-# Generate EFI bootable GRUB image
-grub-mkstandalone -O x86_64-efi \
-    --modules="part_gpt part_msdos fat iso9660" \
-    --locales="" \
-    --themes="" \
-    --fonts="" \
-    --output="${MNTDIR}/boot/efi/EFI/BOOT/BOOTx64.EFI" \
-    "boot/grub/grub.cfg=${LOCALDIR}/live/grub-efi.cfg"
+cp "${WORKDIR}/rootfs/usr/lib/grub/x86_64-efi-signed/gcdx64.efi.signed" \
+       "${MNTDIR}/boot/efi/EFI/BOOT/grubx64.EFI"
+
+cp "${WORKDIR}/rootfs/usr/lib/shim/shimx64.efi.signed.latest" \
+       "${MNTDIR}/boot/efi/EFI/BOOT/BOOTx64.EFI"
+
+# flag file used by grubx64.EFI to find the boot partition
+mkdir -p "${MNTDIR}/.disk"
+echo "Golem Live USB" > "${MNTDIR}/.disk/info"
 
 # Generate BIOS bootable GRUB image
 grub-install \

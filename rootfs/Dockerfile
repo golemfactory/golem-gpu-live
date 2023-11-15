@@ -46,6 +46,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     fdisk \
     parted \
+    shim-signed \
     unattended-upgrades \
     golem-provider \
     golem-nvidia-kernel \
