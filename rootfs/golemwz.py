@@ -171,25 +171,25 @@ def select_gpu_compatible(allow_pci_bridge=True):
         # 5. PCI bridge device is the parent of GPU device
         # 6. GPU device is a supplier for audio device
         if (
-                not has_only_allowed_devices(parsed_devices, devices)
-                or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-                or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-                or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-                or (
+            not has_only_allowed_devices(parsed_devices, devices)
+            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
+            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
+            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
+            or (
                 pci_bridge_device
                 and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
-        )
-                or (
+            )
+            or (
                 pci_audio_device
                 and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-        )
+            )
         ):
             bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
 
         gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
-        vfio_devices = (
-                parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices.get(PCI_AUDIO_CLASS_ID, [])
+        vfio_devices = parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices.get(
+            PCI_AUDIO_CLASS_ID, []
         )
         nvidia_vid_pid_devices = []
         for device in vfio_devices:
@@ -297,7 +297,10 @@ def configure_storage(device, resize_partition):
     if not is_mount_needed(mount_point, dev_by_uuid):
         return
 
-    if resize_partition and device.get("PARTUUID", None) == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01":
+    if (
+        resize_partition
+        and device.get("PARTUUID", None) == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01"
+    ):
         devname_path = Path(device["DEVNAME"])
         device = Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
         if device and Path(f"/dev/{device}").exists():
@@ -306,9 +309,11 @@ def configure_storage(device, resize_partition):
                 f"partprobe /dev/{device}",
                 "udevadm settle",
                 f"e2fsck -fy {devname_path}",
-                f"resize2fs {devname_path}"
+                f"resize2fs {devname_path}",
             ]
-            subprocess.run(["sudo", "bash", "-c", "&&".join(disk_operations)], check=True)
+            subprocess.run(
+                ["sudo", "bash", "-c", "&&".join(disk_operations)], check=True
+            )
 
     mount_point.mkdir(exist_ok=True)
 
@@ -360,7 +365,9 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
     env = get_env()
 
     if not account:
-        raise WizardError("Wallet account address must be provided to set up the preset!")
+        raise WizardError(
+            "Wallet account address must be provided to set up the preset!"
+        )
 
     # FIXME: golemsp passing args is not working at the time of writing
     env["YA_ACCOUNT"] = account
@@ -408,7 +415,7 @@ def bind_vfio(devices):
             continue
         inner_cmd += [
             f'echo vfio-pci > "{driver_override_path}"',
-            f'echo "{dev}" > "{bind_path}"'
+            f'echo "{dev}" > "{bind_path}"',
         ]
     inner_cmd += [
         "echo 0 > /sys/class/vtconsole/vtcon0/bind",
@@ -418,13 +425,8 @@ def bind_vfio(devices):
         inner_cmd += [
             "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind"
         ]
-    inner_cmd += [
-        "modprobe -i vfio-pci"
-    ]
-    subprocess.run(
-        ["sudo", "bash", "-c", "&&".join(inner_cmd)],
-        check=True
-    )
+    inner_cmd += ["modprobe -i vfio-pci"]
+    subprocess.run(["sudo", "bash", "-c", "&&".join(inner_cmd)], check=True)
 
 
 class WizardDialog:
@@ -505,11 +507,7 @@ class WizardDialog:
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        default=False
-    )
+    parser.add_argument("--debug", action="store_true", default=False)
     parser.add_argument(
         "--no-relax-gpu-isolation",
         action="store_true",
@@ -520,23 +518,13 @@ def parse_args():
         "--storage-only",
         action="store_true",
         default=False,
-        help="Configure only persistent storage."
+        help="Configure only persistent storage.",
     )
+    parser.add_argument("--glm-account", default=None, help="Account for payments.")
     parser.add_argument(
-        "--glm-account",
-        default=None,
-        help="Account for payments."
+        "--glm-per-hour", default=None, help="Recommended default value is 0.25."
     )
-    parser.add_argument(
-        "--glm-per-hour",
-        default=None,
-        help="Recommended default value is 0.25."
-    )
-    parser.add_argument(
-        "--init-price",
-        default=None,
-        help="For testing set it to 0."
-    )
+    parser.add_argument("--init-price", default=None, help="For testing set it to 0.")
     parser.add_argument(
         "--gpu-pci-slot",
         default=None,
@@ -577,50 +565,7 @@ def setup_logging(debug=False):
     logging.getLogger().addHandler(console_handler)
 
 
-def main():
-    args = parse_args()
-
-    setup_logging(args.debug)
-
-    wizard_conf = {}
-    wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.conf"
-
-    if wizard_conf_path.exists():
-        try:
-            wizard_conf.update(json.loads(wizard_conf_path.read_text()))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to read configuration file: {str(e)}")
-
-    if args.glm_account:
-        wizard_conf["glm_account"] = args.glm_account
-
-    if args.glm_per_hour:
-        wizard_conf["glm_per_hour"] = args.storage_partition
-
-    if args.glm_per_hour:
-        wizard_conf["glm_init_price"] = args.init_price
-
-    if args.gpu_pci_slot and args.vfio_devices:
-        wizard_conf["gpu"] = {
-            "slot": args.gpu_pci_slot,
-            "devices": args.vfio_devices,
-            "vfio": ",".join(get_vid_pid_from_slot(dev) for dev in args.vfio_devices),
-            "description": get_pci_full_string_description_from_slot(args.gpu_pci_slot),
-        }
-
-    system_configured = all(
-        [
-            wizard_conf.get("accepted_terms", False),
-            wizard_conf.get("is_password_set", False),
-            wizard_conf.get("storage_partition", None),
-            wizard_conf.get("glm_account", None),
-            wizard_conf.get("glm_per_hour", None),
-            wizard_conf.get("glm_init_price", None),
-            wizard_conf.get("gpu", None)
-        ]
-    )
-
-    wizard_dialog = WizardDialog(show_welcome=not system_configured)
+def main(args, wizard_conf):
 
     #
     # TERMS OF USE
@@ -629,8 +574,8 @@ def main():
     logging.info("Check accepted license terms.")
     if not wizard_conf.get("accepted_terms", False):
         if not wizard_dialog.yesno(
-                "By installing & running this software you declare that you have read, understood and hereby accept the "
-                "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
+            "By installing & running this software you declare that you have read, understood and hereby accept the "
+            "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
         ):
             return
 
@@ -666,9 +611,9 @@ def main():
             info = devices.values()
 
         partition_choices = (
-                begin_choices
-                + [(dev["DEVNAME"], get_partition_description(dev)) for dev in info]
-                + end_choices
+            begin_choices
+            + [(dev["DEVNAME"], get_partition_description(dev)) for dev in info]
+            + end_choices
         )
 
         code, partition_tag = wizard_dialog.menu(
@@ -680,7 +625,7 @@ def main():
 
         if not partition_tag or partition_tag == "-":
             if not wizard_dialog.yesno(
-                    "No persistent storage defined. Would you like to continue?"
+                "No persistent storage defined. Would you like to continue?"
             ):
                 return
             device = {"DEVNAME": "/dev/notset"}
@@ -694,13 +639,12 @@ def main():
         resize_partition = False
 
     if device and device.get("DEVNAME", None) != "/dev/notset":
-        configure_storage(
-            device=device,
-            resize_partition=resize_partition
-        )
+        configure_storage(device=device, resize_partition=resize_partition)
 
     if args.storage_only:
-        logger.info("Storage configured. Only storage configuration requested, exiting now.")
+        logger.info(
+            "Storage configured. Only storage configuration requested, exiting now."
+        )
         return
 
     #
@@ -728,14 +672,22 @@ def main():
             # Setup timeout for letting nm-online detecting activation
             cur = 0
             timeout = 30
-            wizard_dialog.dialog.gauge_start("Progress: 0%", title="Waiting for network activation...")
-            process = subprocess.Popen(["nm-online", "--timeout", str(timeout)], stdout=subprocess.DEVNULL)
+            wizard_dialog.dialog.gauge_start(
+                "Progress: 0%", title="Waiting for network activation..."
+            )
+            process = subprocess.Popen(
+                ["nm-online", "--timeout", str(timeout)], stdout=subprocess.DEVNULL
+            )
             while cur <= timeout:
                 if process.poll() is not None:
-                    wizard_dialog.dialog.gauge_update(100, "Progress: 100%", update_text=True)
+                    wizard_dialog.dialog.gauge_update(
+                        100, "Progress: 100%", update_text=True
+                    )
                     break
                 update = int(100 * cur / timeout)
-                wizard_dialog.dialog.gauge_update(update, "Progress: {0}%".format(update), update_text=True)
+                wizard_dialog.dialog.gauge_update(
+                    update, "Progress: {0}%".format(update), update_text=True
+                )
                 time.sleep(1)
                 cur += 1
             wizard_dialog.dialog.gauge_stop()
@@ -759,7 +711,8 @@ def main():
     glm_account = wizard_conf.get("glm_account", None)
     while not glm_account:
         user_input = wizard_dialog.inputbox(
-            "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):", width=96
+            "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):",
+            width=96,
         )
         if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
             glm_account = user_input
@@ -772,12 +725,16 @@ def main():
                 "Invalid account address provided. Please ensure account address contains 40 hexadecimal digits prefixed with '0x'."
             )
 
-    glm_per_hour = wizard_conf.get("glm_per_hour", None) or wizard_dialog.inputbox(
-        "GLM per hour:", init="0.25"
-    ) or 0.25
-    glm_init_price = wizard_conf.get("glm_init_price", None) or wizard_dialog.inputbox(
-        "GLM init price:", init="0"
-    ) or 0
+    glm_per_hour = (
+        wizard_conf.get("glm_per_hour", None)
+        or wizard_dialog.inputbox("GLM per hour:", init="0.25")
+        or 0.25
+    )
+    glm_init_price = (
+        wizard_conf.get("glm_init_price", None)
+        or wizard_dialog.inputbox("GLM init price:", init="0")
+        or 0
+    )
     try:
         cpu_price = float(glm_per_hour) / 3600.0
         duration_price = cpu_price / 5.0
@@ -810,7 +767,9 @@ def main():
             raise WizardError("No compatible GPU available.")
 
         gpu_choices = [(gpu["description"], "") for gpu in gpu_list]
-        code, gpu_tag = wizard_dialog.menu("Select a GPU:", choices=gpu_choices, height=32)
+        code, gpu_tag = wizard_dialog.menu(
+            "Select a GPU:", choices=gpu_choices, height=32
+        )
 
         selected_gpu = None
         for gpu in gpu_list:
@@ -845,12 +804,17 @@ def main():
                 shutil.copy2(runtime_json, plugins_dir)
 
         runtime_path = (
-            (Path("~").expanduser() / ".local/lib/yagna/plugins/ya-runtime-vm-nvidia.json")
+            (
+                Path("~").expanduser()
+                / ".local/lib/yagna/plugins/ya-runtime-vm-nvidia.json"
+            )
             .expanduser()
             .resolve()
         )
         if not runtime_path:
-            raise WizardError(f"Cannot find runtime configuration file '{runtime_path}'.")
+            raise WizardError(
+                f"Cannot find runtime configuration file '{runtime_path}'."
+            )
 
         configure_runtime(runtime_path, selected_gpu)
 
@@ -859,7 +823,9 @@ def main():
         #
 
         runtime_files_dir = (
-            (Path("~").expanduser() / ".local/lib/yagna/plugins/").expanduser().resolve()
+            (Path("~").expanduser() / ".local/lib/yagna/plugins/")
+            .expanduser()
+            .resolve()
         )
         fix_paths(runtime_files_dir)
 
@@ -915,11 +881,66 @@ def main():
 
 
 if __name__ == "__main__":
+    wizard_dialog = None
+    err_msg = None
     try:
-        main()
+        args = parse_args()
+
+        setup_logging(args.debug)
+
+        wizard_conf = {}
+        wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.conf"
+
+        if wizard_conf_path.exists():
+            try:
+                wizard_conf.update(json.loads(wizard_conf_path.read_text()))
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to read configuration file: {str(e)}")
+
+        if args.glm_account:
+            wizard_conf["glm_account"] = args.glm_account
+
+        if args.glm_per_hour:
+            wizard_conf["glm_per_hour"] = args.storage_partition
+
+        if args.glm_per_hour:
+            wizard_conf["glm_init_price"] = args.init_price
+
+        if args.gpu_pci_slot and args.vfio_devices:
+            wizard_conf["gpu"] = {
+                "slot": args.gpu_pci_slot,
+                "devices": args.vfio_devices,
+                "vfio": ",".join(
+                    get_vid_pid_from_slot(dev) for dev in args.vfio_devices
+                ),
+                "description": get_pci_full_string_description_from_slot(
+                    args.gpu_pci_slot
+                ),
+            }
+
+        system_configured = all(
+            [
+                wizard_conf.get("accepted_terms", False),
+                wizard_conf.get("is_password_set", False),
+                wizard_conf.get("storage_partition", None),
+                wizard_conf.get("glm_account", None),
+                wizard_conf.get("glm_per_hour", None),
+                wizard_conf.get("glm_init_price", None),
+                wizard_conf.get("gpu", None),
+            ]
+        )
+
+        wizard_dialog = WizardDialog(show_welcome=not system_configured)
+        main(args=args, wizard_conf=wizard_conf)
     except KeyboardInterrupt:
-        logger.error("Interrupting...")
+        err_msg = "Interrupting..."
     except WizardError as e:
-        logger.error(f"Wizard error: {str(e)}")
+        err_msg = f"Wizard error: {str(e)}"
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        err_msg = f"Unexpected error: {str(e)}"
+
+    if err_msg:
+        logger.error(err_msg)
+        if wizard_dialog:
+            wizard_dialog.msgbox(err_msg)
+        sys.exit(1)
