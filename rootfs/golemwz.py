@@ -565,50 +565,7 @@ def setup_logging(debug=False):
     logging.getLogger().addHandler(console_handler)
 
 
-def main():
-    args = parse_args()
-
-    setup_logging(args.debug)
-
-    wizard_conf = {}
-    wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.conf"
-
-    if wizard_conf_path.exists():
-        try:
-            wizard_conf.update(json.loads(wizard_conf_path.read_text()))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to read configuration file: {str(e)}")
-
-    if args.glm_account:
-        wizard_conf["glm_account"] = args.glm_account
-
-    if args.glm_per_hour:
-        wizard_conf["glm_per_hour"] = args.storage_partition
-
-    if args.glm_per_hour:
-        wizard_conf["glm_init_price"] = args.init_price
-
-    if args.gpu_pci_slot and args.vfio_devices:
-        wizard_conf["gpu"] = {
-            "slot": args.gpu_pci_slot,
-            "devices": args.vfio_devices,
-            "vfio": ",".join(get_vid_pid_from_slot(dev) for dev in args.vfio_devices),
-            "description": get_pci_full_string_description_from_slot(args.gpu_pci_slot),
-        }
-
-    system_configured = all(
-        [
-            wizard_conf.get("accepted_terms", False),
-            wizard_conf.get("is_password_set", False),
-            wizard_conf.get("storage_partition", None),
-            wizard_conf.get("glm_account", None),
-            wizard_conf.get("glm_per_hour", None),
-            wizard_conf.get("glm_init_price", None),
-            wizard_conf.get("gpu", None),
-        ]
-    )
-
-    wizard_dialog = WizardDialog(show_welcome=not system_configured)
+def main(args, wizard_conf, wizard_dialog):
 
     #
     # TERMS OF USE
@@ -924,11 +881,65 @@ def main():
 
 
 if __name__ == "__main__":
+    wizard_dialog = None
+    err_msg = None
     try:
-        main()
+        args = parse_args()
+
+        setup_logging(args.debug)
+
+        wizard_conf = {}
+        wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.conf"
+
+        if wizard_conf_path.exists():
+            try:
+                wizard_conf.update(json.loads(wizard_conf_path.read_text()))
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to read configuration file: {str(e)}")
+
+        if args.glm_account:
+            wizard_conf["glm_account"] = args.glm_account
+
+        if args.glm_per_hour:
+            wizard_conf["glm_per_hour"] = args.storage_partition
+
+        if args.glm_per_hour:
+            wizard_conf["glm_init_price"] = args.init_price
+
+        if args.gpu_pci_slot and args.vfio_devices:
+            wizard_conf["gpu"] = {
+                "slot": args.gpu_pci_slot,
+                "devices": args.vfio_devices,
+                "vfio": ",".join(
+                    get_vid_pid_from_slot(dev) for dev in args.vfio_devices
+                ),
+                "description": get_pci_full_string_description_from_slot(
+                    args.gpu_pci_slot
+                ),
+            }
+
+        system_configured = all(
+            [
+                wizard_conf.get("accepted_terms", False),
+                wizard_conf.get("is_password_set", False),
+                wizard_conf.get("storage_partition", None),
+                wizard_conf.get("glm_account", None),
+                wizard_conf.get("glm_per_hour", None),
+                wizard_conf.get("glm_init_price", None),
+                wizard_conf.get("gpu", None),
+            ]
+        )
+        wizard_dialog = WizardDialog(show_welcome=not system_configured)
+        main(args=args, wizard_conf=wizard_conf, wizard_dialog=wizard_dialog)
     except KeyboardInterrupt:
-        logger.error("Interrupting...")
+        err_msg = "Interrupting..."
     except WizardError as e:
-        logger.error(f"Wizard error: {str(e)}")
+        err_msg = f"Wizard error: {str(e)}"
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        err_msg = f"Unexpected error: {str(e)}"
+
+    if err_msg:
+        logger.error(err_msg)
+        if wizard_dialog:
+            wizard_dialog.msgbox(err_msg)
+        sys.exit(1)
