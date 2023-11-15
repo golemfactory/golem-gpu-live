@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     bc \
     jq \
+    less \
     sudo \
     python3 \
     python3-dialog \
