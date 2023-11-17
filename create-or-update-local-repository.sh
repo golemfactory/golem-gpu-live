@@ -62,7 +62,7 @@ download_deb_files \
     https://github.com/golemfactory/ya-installer-resources/releases/download/v0.1.12/ya-installer-resources_v0.1.12.deb \
     https://github.com/golemfactory/ya-runtime-vm/releases/download/pre-rel-v0.4.0-ITL-rc17/ya-runtime-vm_pre-rel-v0.4.0-ITL-rc17_amd64.deb \
     https://github.com/golemfactory/ya-runtime-vm-nvidia/releases/download/pre-rel-v0.1.3-rc6/ya-runtime-vm-nvidia_pre-rel-v0.1.3-rc6.deb \
-    https://github.com/fepitre/golem-nvidia-kernel/releases/download/v6.1.58-3/golem-nvidia-kernel_6.1.58-3_amd64.deb
+    https://github.com/fepitre/golem-nvidia-kernel/releases/download/v6.1.62-2/golem-nvidia-kernel_6.1.62-2_amd64.deb
 
 # Add the new .deb files to the local repository and sign the repository metadata
 create_local_repository
