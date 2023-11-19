@@ -96,8 +96,10 @@ RUN ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target
 # Copy fstab
 COPY fstab /etc/
 
-# unattented-upgrades conf
+# Unattented-upgrades conf
 COPY 20auto-upgrades /etc/apt/apt.conf.d/
+RUN rm -f /etc/apt/apt.conf.d/docker-disable-periodic-update \
+          /usr/sbin/policy-rc.d
 
 # Copy GOLEM Wizard and Systemd service
 COPY golemwz.py /usr/local/bin/golemwz
