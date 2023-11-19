@@ -2,9 +2,13 @@ FROM ubuntu:jammy
 
 ARG DEBIAN_FRONTEND=noninteractive
 
+# install ca-certificates before accessing any https repo
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates && apt-get clean
+
 # Add fepitre's GOLEM repository
 COPY 473F57D3A9534D53F0128E9DFF0244C9D7E28146.asc /etc/apt/trusted.gpg.d/golem.asc
-RUN bash -c 'echo deb http://mirror.notset.fr/golem/repo/ jammy main > /etc/apt/sources.list.d/golem.list'
+RUN bash -c 'echo deb https://fepitre.github.io/golem-gpu-live jammy main > /etc/apt/sources.list.d/golem.list'
 
 # Accept GOLEM terms for install then Wizard will manage it
 RUN bash -c 'echo golem golem/terms/subsidy-01 string yes | debconf-set-selections'
