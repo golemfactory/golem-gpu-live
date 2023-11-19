@@ -37,7 +37,7 @@ label-id: f4796a2a-e377-45bd-b539-d6d49e569055
 
 size=200MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, uuid=fa4d6529-56da-47c7-ae88-e2dfecb72621, name="EFI System"
 size=2MiB, type=21686148-6449-6E6F-744E-656564454649, uuid=1e6c9db4-1e91-46c4-846a-2030dcb13b8c, name="BIOS boot partition"
-size=5000MiB, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=693244e6-3e07-47bf-ad79-acade4293fe7, name="Golem root filesystem"
+size=5500MiB, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=693244e6-3e07-47bf-ad79-acade4293fe7, name="Golem root filesystem"
 type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01, name="Golem storage"
 EOF
 
