@@ -1,0 +1,43 @@
+name: Fetch deb
+description: Fetch deb package from release
+inputs:
+  owner:
+    description: "Repository owner"
+    required: false
+    default: golemfactory
+  repo:
+    description: "Repository name"
+    required: true
+  pattern:
+    description: "Version pattern"
+    required: true
+  out-dir:
+    description: "Output directory"
+    required: false
+    default: packages
+  prerelease:
+    description: "Should look for prelease"
+    required: false
+    default: false
+
+runs:
+  using: composite
+  steps:
+    - name: "Get release"
+      id: get_release
+      uses: joutvhu/get-release@v1.0.2
+      with:
+        owner: ${{ inputs.owner }}
+        repo: ${{ inputs.repo }}
+        latest: true
+        pattern: ${{ inputs.pattern }}
+        prerelease: ${{ inputs.prerelease }}
+    - name: "Fetch deb package: yagna"
+      uses: robinraju/release-downloader@v1.8
+      with:
+        repository: ${{ inputs.owner }}/${{ inputs.repo }}
+        tag: ${{ steps.get_release.outputs.tag_name }}
+        fileName: "*.deb"
+        out-file-path: ${{ inputs.out-dir }}
+        tarBall: false
+        zipBall: false
