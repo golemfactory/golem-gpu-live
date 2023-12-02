@@ -323,8 +323,6 @@ def configure_storage(device, resize_partition):
     permissions_cmd = ["sudo", "chown", "-R", "golem:golem", str(mount_point)]
     subprocess.run(permissions_cmd, check=True)
 
-    return mount_point
-
 
 def configure_bind_mount(directory, bind_directory):
     if os.path.ismount(bind_directory):
@@ -651,12 +649,11 @@ def main(args, wizard_conf, wizard_dialog):
         resize_partition = False
 
     if device and device.get("DEVNAME", None) != "/dev/notset":
-        mount_point = configure_storage(
-            device=device, resize_partition=resize_partition
-        )
+        configure_storage(device=device, resize_partition=resize_partition)
         # Mount persistent storage directory .local onto ~/.local
         configure_bind_mount(
-            mount_point / "golem-gpu-live", Path("~").expanduser() / ".local"
+            Path("~").expanduser() / "mnt/golem-gpu-live",
+            Path("~").expanduser() / ".local",
         )
 
     if args.storage_only:
