@@ -292,7 +292,7 @@ def configure_storage(device, resize_partition):
     if not os.path.exists(dev_by_uuid):
         raise WizardError("Invalid storage provided.")
 
-    mount_point = Path("~").expanduser() / ".local"
+    mount_point = Path("~").expanduser() / "mnt"
 
     if not is_mount_needed(mount_point, dev_by_uuid):
         return
@@ -322,6 +322,19 @@ def configure_storage(device, resize_partition):
 
     permissions_cmd = ["sudo", "chown", "-R", "golem:golem", str(mount_point)]
     subprocess.run(permissions_cmd, check=True)
+
+    return mount_point
+
+
+def configure_bind_mount(directory, bind_directory):
+    if os.path.ismount(bind_directory):
+        return True
+
+    directory.mkdir(exist_ok=True)
+    bind_directory.mkdir(exist_ok=True)
+
+    mount_cmd = ["sudo", "mount", "-o", "bind", str(directory), str(bind_directory)]
+    subprocess.run(mount_cmd, check=True)
 
 
 def get_env():
@@ -638,7 +651,13 @@ def main(args, wizard_conf, wizard_dialog):
         resize_partition = False
 
     if device and device.get("DEVNAME", None) != "/dev/notset":
-        configure_storage(device=device, resize_partition=resize_partition)
+        mount_point = configure_storage(
+            device=device, resize_partition=resize_partition
+        )
+        # Mount persistent storage directory .local onto ~/.local
+        configure_bind_mount(
+            mount_point / "golem-gpu-live", Path("~").expanduser() / ".local"
+        )
 
     if args.storage_only:
         logger.info(
