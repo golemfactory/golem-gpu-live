@@ -566,7 +566,6 @@ def setup_logging(debug=False):
 
 
 def main(args, wizard_conf, wizard_dialog):
-
     #
     # TERMS OF USE
     #
@@ -855,6 +854,10 @@ def main(args, wizard_conf, wizard_dialog):
 
     logging.info("Configure passthrough.")
     if not args.no_passthrough:
+        wizard_dialog.msgbox(
+            "Your screen might turn off or freeze. Check if your provider is visible on the network: "
+            "https://stats.golem.network/network/providers/online or log in using SSH."
+        )
         try:
             bind_vfio(selected_gpu["devices"])
         except subprocess.CalledProcessError as e:
