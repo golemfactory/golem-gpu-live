@@ -417,10 +417,10 @@ def bind_vfio(devices):
             f'echo vfio-pci > "{driver_override_path}"',
             f'echo "{dev}" > "{bind_path}"',
         ]
-    inner_cmd += [
-        "echo 0 > /sys/class/vtconsole/vtcon0/bind",
-        "echo 0 > /sys/class/vtconsole/vtcon1/bind",
-    ]
+    if Path("/sys/class/vtconsole/vtcon0/bind").exists():
+        inner_cmd += ["echo 0 > /sys/class/vtconsole/vtcon0/bind"]
+    if Path("/sys/class/vtconsole/vtcon1/bind").exists():
+        inner_cmd += ["echo 0 > /sys/class/vtconsole/vtcon1/bind"]
     if Path("/sys/bus/platform/drivers/efi-framebuffer/efi-framebuffer.0").exists():
         inner_cmd += [
             "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind"
