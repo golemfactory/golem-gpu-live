@@ -1,5 +1,5 @@
 #!/bin/sh
 
 printf 'Welcome to GOLEM provider environment\n\n'
-printf ' * Wizard logfile -- ~/golemwz.log\n\n'
+printf ' * Wizard logfile -- ~/golemwz.log\n'
 printf ' * Yagna logfile -- ~/.local/share/yagna/yagna_rCURRENT.log\n\n'
