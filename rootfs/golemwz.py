@@ -767,6 +767,11 @@ def main(args, wizard_conf, wizard_dialog):
     # GPU
     #
 
+    msg_freeze = (
+        "Your screen might turn off or freeze. Check if your provider is visible on the network "
+        "https://stats.golem.network/network/providers/online or log in using SSH."
+    )
+
     logging.info("Configure GPU.")
     if not wizard_conf.get("gpu", None):
         gpu_list, bad_isolation_groups = select_gpu_compatible(
@@ -805,10 +810,7 @@ def main(args, wizard_conf, wizard_dialog):
 
         wizard_conf["gpu"] = selected_gpu
 
-        wizard_dialog.msgbox(
-            "Your screen might turn off or freeze. Check if your provider is visible on the network: "
-            "https://stats.golem.network/network/providers/online or log in using SSH."
-        )
+        wizard_dialog.msgbox(msg_freeze)
     else:
         selected_gpu = wizard_conf["gpu"]
 
@@ -875,6 +877,9 @@ def main(args, wizard_conf, wizard_dialog):
     #
     # VFIO
     #
+
+    # Add warning about a possible screen freeze
+    logging.info(msg_freeze)
 
     logging.info("Configure passthrough.")
     if not args.no_passthrough:
