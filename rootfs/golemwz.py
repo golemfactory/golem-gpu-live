@@ -320,16 +320,23 @@ def configure_storage(device, resize_partition):
     mount_cmd = ["sudo", "mount", dev_by_uuid, str(mount_point)]
     subprocess.run(mount_cmd, check=True)
 
-    permissions_cmd = ["sudo", "chown", "-R", "golem:golem", str(mount_point)]
-    subprocess.run(permissions_cmd, check=True)
-
 
 def configure_bind_mount(directory, bind_directory):
     if os.path.ismount(bind_directory):
         return True
 
-    directory.mkdir(exist_ok=True)
-    bind_directory.mkdir(exist_ok=True)
+    mkdir_cmd = ["sudo", "mkdir", "-p", str(directory), str(bind_directory)]
+    subprocess.run(mkdir_cmd)
+
+    permissions_cmd = [
+        "sudo",
+        "chown",
+        "-R",
+        "golem:golem",
+        str(directory),
+        str(bind_directory),
+    ]
+    subprocess.run(permissions_cmd, check=True)
 
     mount_cmd = ["sudo", "mount", "-o", "bind", str(directory), str(bind_directory)]
     subprocess.run(mount_cmd, check=True)
