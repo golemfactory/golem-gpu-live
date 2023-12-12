@@ -169,3 +169,15 @@ The repository is built in GitHub Actions and then uploaded to GitHub Pages. To 
 1. Create GPG key (just for signing), upload its private part to `APT_GPG_KEY` secret in the repository and save its public part into a file in `rootfs/` directory.
 2. Adjust repository URL and key file name in `rootfs/Dockerfile` (at the very beginning).
 3. Setup schedule or other trigger to your liking for the workflow defined in `.github/workflows/repository.yml`.
+
+The APT repository combines the following components:
+ - yagna
+ - ya-runtime-wasi
+ - ya-runtime-vm
+ - ya-runtime-vm-nvidia (which incorporates ya-runtime-vm too, with nvidia-specific files added, especially gpu-aware self-test image)
+ - golem-nvidia-kernel (kernel used by ya-runtime-vm-nvidia)
+ - ya-installer-resources
+
+Specific versions of each of them are defined in the worklow file mentioned above. They can be specified as a pattern (preferable) which means "latest version matching the pattern".
+
+It is important for the GPU isolation security to update golem-nvidia-kernel frequently. See README in that repository for instructions.
