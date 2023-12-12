@@ -257,6 +257,9 @@ def get_filtered_blkid_output():
     for partition, info in devices.items():
         if not info.get("UUID", None):
             continue
+        fs = info.get("TYPE", None)
+        if fs not in ("ext4", "ext3", "xfs", "btrfs"):
+            continue
         info["_label"] = info.get("PARTLABEL", "") or info.get("LABEL", "")
         filtered_devices[partition] = info
     return filtered_devices
