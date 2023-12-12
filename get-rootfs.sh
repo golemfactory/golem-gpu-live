@@ -5,7 +5,7 @@
 
 set -eux -o pipefail
 
-if [ $# -ne 3 ]; then
+if [ $# -ne 2 ]; then
     echo "Usage: $0 <image_name> <output_directory>"
     exit 1
 fi
