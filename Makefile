@@ -9,7 +9,7 @@ all: image iso
 
 root:
 	sudo docker build $(BUILD_ARGS) -t golem-gpu-live -f $(LOCAL_DIR)/rootfs/Dockerfile rootfs
-	sudo ./get-rootfs.sh golem-gpu-live $(WORK_DIR)
+	sudo ./get-rootfs.sh golem-gpu-live:latest $(WORK_DIR)
 
 image: root
 	sudo $(LOCAL_DIR)/create-live-image.sh $(WORK_DIR) $(VERSION)
