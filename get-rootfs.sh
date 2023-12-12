@@ -42,6 +42,7 @@ trap cleanup 0 1 2 3 6 15
 container_id="$(docker create "$image_name")"
 
 # Copy container rootfs content to output directory
+rm -rf "$output_directory/rootfs"
 mkdir -p "$output_directory/rootfs"
 sudo docker cp "$container_id:/" "$output_directory/rootfs/"
 
