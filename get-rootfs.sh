@@ -27,6 +27,10 @@ cleanup() {
             rm -rf "$output_directory/rootfs"
         fi
     fi
+    if [ -n "$container_id" ]; then
+        # Delete created container
+        sudo docker rm "$container_id"
+    fi
 }
 
 # Check if docker and jq exist
@@ -44,7 +48,7 @@ container_id="$(docker create "$image_name")"
 # Copy container rootfs content to output directory
 rm -rf "$output_directory/rootfs"
 mkdir -p "$output_directory/rootfs"
-sudo docker cp "$container_id:/" "$output_directory/rootfs/"
+cd "$output_directory/rootfs/"
 
-# Delete created container
-sudo docker rm "$container_id"
+sudo docker export "$container_id" | tar xf -
+
