@@ -50,5 +50,9 @@ rm -rf "$output_directory/rootfs"
 mkdir -p "$output_directory/rootfs"
 cd "$output_directory/rootfs/"
 
-sudo docker export "$container_id" | tar xf -
+docker export "$container_id" | tar xf -
 
+# Cleanup useless files
+for f in console pts shm; do
+   rm -rf "$output_directory/rootfs/dev/$f"
+done
