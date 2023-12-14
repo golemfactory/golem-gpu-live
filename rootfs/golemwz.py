@@ -592,7 +592,7 @@ def main(args, wizard_conf, wizard_dialog):
     if not wizard_conf.get("accepted_terms", False):
         if not wizard_dialog.yesno(
             "By installing & running this software you declare that you have read, understood and hereby accept the "
-            "disclaimer and privacy warning found at 'https://handbook.golem.network/see-also/terms'."
+            "disclaimer and privacy warning found at 'https://docs.golem.network/docs/golem/terms'."
         ):
             return
 
