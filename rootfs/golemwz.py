@@ -382,7 +382,7 @@ def configure_runtime(runtime_path, selected_gpu):
     runtime_path.write_text(json.dumps(runtime_content, indent=4))
 
 
-def configure_preset(runtime_id, account, duration_price, cpu_price, init_price):
+def configure_preset(runtime_id, account, duration_price, cpu_price):
     env = get_env()
 
     if not account:
@@ -413,7 +413,6 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, init_price)
         "--price",
         f"Duration={duration_price}",
         f"CPU={cpu_price}",
-        f"Init price={init_price}",
     ]
     preset_cmd = ["ya-provider", "preset"]
     if preset_exists(runtime_id):
@@ -755,11 +754,6 @@ def main(args, wizard_conf, wizard_dialog):
         or wizard_dialog.inputbox("GLM per hour:", init="0.25")
         or 0.25
     )
-    glm_init_price = (
-        wizard_conf.get("glm_init_price", None)
-        or wizard_dialog.inputbox("GLM init price:", init="0")
-        or 0
-    )
     try:
         cpu_price = float(glm_per_hour) / 3600.0
         duration_price = cpu_price / 5.0
@@ -768,7 +762,6 @@ def main(args, wizard_conf, wizard_dialog):
 
     wizard_conf["glm_account"] = glm_account
     wizard_conf["glm_per_hour"] = glm_per_hour
-    wizard_conf["glm_init_price"] = glm_init_price
 
     #
     # GPU
@@ -875,7 +868,6 @@ def main(args, wizard_conf, wizard_dialog):
                 account=glm_account,
                 duration_price=duration_price,
                 cpu_price=cpu_price,
-                init_price=glm_init_price,
             )
             wizard_conf["preset_configured"] = True
         except subprocess.CalledProcessError as e:
@@ -938,9 +930,6 @@ if __name__ == "__main__":
         if args.glm_per_hour:
             wizard_conf["glm_per_hour"] = args.storage_partition
 
-        if args.glm_per_hour:
-            wizard_conf["glm_init_price"] = args.init_price
-
         if args.gpu_pci_slot and args.vfio_devices:
             wizard_conf["gpu"] = {
                 "slot": args.gpu_pci_slot,
@@ -960,7 +949,6 @@ if __name__ == "__main__":
                 wizard_conf.get("storage_partition", None),
                 wizard_conf.get("glm_account", None),
                 wizard_conf.get("glm_per_hour", None),
-                wizard_conf.get("glm_init_price", None),
                 wizard_conf.get("gpu", None),
             ]
         )
