@@ -595,7 +595,7 @@ def main(args, wizard_conf, wizard_dialog):
     if not wizard_conf.get("accepted_terms", False):
         if not wizard_dialog.yesno(
             "By installing & running this software you declare that you have read, understood and hereby accept the "
-            "disclaimer and privacy warning found at 'https://docs.golem.network/docs/golem/terms'."
+            "disclaimer and privacy warning found at 'https://glm.zone/GPUProviderTC'."
         ):
             return
 
@@ -776,7 +776,7 @@ def main(args, wizard_conf, wizard_dialog):
 
     msg_freeze = (
         "Your screen might turn off or freeze. Check if your provider is visible on the network "
-        "https://stats.golem.network/network/providers/online or log in using SSH."
+        "https://glm.zone/GPUProviderStats or log in using SSH."
     )
 
     logging.info("Configure GPU.")
