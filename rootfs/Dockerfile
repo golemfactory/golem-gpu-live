@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates && apt-get clean
 
 # Add fepitre's GOLEM repository
-COPY 473F57D3A9534D53F0128E9DFF0244C9D7E28146.asc /etc/apt/trusted.gpg.d/golem.asc
+COPY A6FC0686E1EFC16F5D8AAAA6C69F9049D4AC7CD4.asc /etc/apt/trusted.gpg.d/golem.asc
 RUN bash -c 'echo deb https://fepitre.github.io/golem-gpu-live jammy main > /etc/apt/sources.list.d/golem.list'
 
 # Accept GOLEM terms for install then Wizard will manage it
