@@ -6,9 +6,9 @@ ARG DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates && apt-get clean
 
-# Add fepitre's GOLEM repository
+# Add GOLEM's repository
 COPY A6FC0686E1EFC16F5D8AAAA6C69F9049D4AC7CD4.asc /etc/apt/trusted.gpg.d/golem.asc
-RUN bash -c 'echo deb https://fepitre.github.io/golem-gpu-live jammy main > /etc/apt/sources.list.d/golem.list'
+RUN bash -c 'echo deb https://golemfactory.github.io/golem-gpu-live jammy main > /etc/apt/sources.list.d/golem.list'
 
 # Accept GOLEM terms for install then Wizard will manage it
 RUN bash -c 'echo golem golem/terms/subsidy-01 string yes | debconf-set-selections'
@@ -44,6 +44,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     python3 \
     python3-dialog \
+    python3-toml \
+    python3-tomli-w \
     dialog \
     qemu-kvm \
     musl-tools \

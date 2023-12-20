@@ -12,6 +12,8 @@ import string
 import subprocess
 import sys
 import time
+import toml
+import tomli_w
 from pathlib import Path
 from textwrap import wrap
 
@@ -287,6 +289,15 @@ def fix_paths(runtime_files_dir):
             )
         )
         runtime_json_path.write_text(json.dumps(runtime_content, indent=4))
+
+
+def mount_conf_storage():
+    dev_partlabel = "/dev/disk/by-partlabel/Golem\\x20conf\\x20storage"
+    mount_cmd = ["sudo", "mount", dev_partlabel, "/mnt"]
+    try:
+        subprocess.run(mount_cmd, check=True)
+    except subprocess.CalledProcessError as e:
+        raise WizardError(f"Failed to mount configuration partition: {str(e)}")
 
 
 def configure_storage(device, resize_partition):
@@ -901,10 +912,21 @@ def main(args, wizard_conf, wizard_dialog):
 
     logging.info("Save Wizard configuration file.")
     if not args.no_save:
+        # Save Wizard configuration
         try:
-            wizard_conf_path.write_text(json.dumps(wizard_conf, indent=4))
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to save configuration file: {str(e)}")
+            wizard_conf_path.write_text(tomli_w.dumps(wizard_conf))
+        except toml.TOMLDecodeError as e:
+            raise WizardError(f"Failed to save configuration file: {str(e)}")
+
+        # Once Wizard configuration written, we delete the first boot configuration
+        try:
+            subprocess.run(
+                ["sudo", "rm", "-f", str(firstboot_wizard_conf_path)], check=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise WizardError(
+                f"Failed to delete first boot configuration file: {str(e)}"
+            )
 
 
 if __name__ == "__main__":
@@ -914,15 +936,28 @@ if __name__ == "__main__":
         args = parse_args()
 
         setup_logging(args.debug)
+        mount_conf_storage()
 
         wizard_conf = {}
-        wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.conf"
 
-        if wizard_conf_path.exists():
-            try:
-                wizard_conf.update(json.loads(wizard_conf_path.read_text()))
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to read configuration file: {str(e)}")
+        # If exists, the first boot configuration file path provided in Golem conf partition
+        firstboot_wizard_conf_path = Path("/mnt/golemwz.toml")
+
+        # Wizard configuration file path
+        wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.toml"
+
+        try:
+            conf_to_load = None
+            if wizard_conf_path.exists():
+                conf_to_load = wizard_conf_path
+            elif firstboot_wizard_conf_path.exists():
+                conf_to_load = firstboot_wizard_conf_path
+            if conf_to_load:
+                wizard_conf.update(toml.loads(conf_to_load.read_text()))
+        except toml.TOMLDecodeError as e:
+            logger.error(
+                f"Failed to read configuration file '{wizard_conf_path}': {str(e)}"
+            )
 
         if args.glm_account:
             wizard_conf["glm_account"] = args.glm_account

@@ -12,7 +12,9 @@ function cleanup() {
     local mountdir="$1"
 
     if mountpoint -q "${mountdir}"; then
-        umount -f -l "${mountdir}/boot/efi" || true
+        if mountpoint -q "${mountdir}/boot/efi"; then
+            umount -f -l "${mountdir}/boot/efi"
+        fi
         umount -f -l "${mountdir}"
     fi
 
@@ -37,6 +39,7 @@ label-id: f4796a2a-e377-45bd-b539-d6d49e569055
 
 size=200MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, uuid=fa4d6529-56da-47c7-ae88-e2dfecb72621, name="EFI System"
 size=2MiB, type=21686148-6449-6E6F-744E-656564454649, uuid=1e6c9db4-1e91-46c4-846a-2030dcb13b8c, name="BIOS boot partition"
+size=1MiB, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=33b921b8-edc5-46a0-8baa-d0b7ad84fc71, name="Golem conf storage"
 size=6000MiB, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=693244e6-3e07-47bf-ad79-acade4293fe7, name="Golem root filesystem"
 type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01, name="Golem storage"
 EOF
@@ -44,13 +47,15 @@ EOF
 IMG_LOOP=$(/sbin/losetup -P -f --show "$IMG")
 EFI_IMG_DEV=${IMG_LOOP}p1
 BIOS_IMG_DEV=${IMG_LOOP}p2
-IMG_DEV=${IMG_LOOP}p3
-STORAGE_DEV=${IMG_LOOP}p4
+CONF_DEV=${IMG_LOOP}p3
+IMG_DEV=${IMG_LOOP}p4
+STORAGE_DEV=${IMG_LOOP}p5
 
 udevadm settle --exit-if-exists="$IMG_DEV"
 
 # Creating filesystems
 /sbin/mkfs.vfat "${EFI_IMG_DEV}"
+/sbin/mkfs.fat -F32 "${CONF_DEV}"
 /sbin/mkfs.ext4 -U 90a495f3-c8ce-45c6-97ac-3bd5edf3aebd -q -F "${IMG_DEV}"
 /sbin/mkfs.ext4 -q -F "${STORAGE_DEV}"
 
@@ -88,6 +93,18 @@ cp "${WORKDIR}/rootfs/usr/lib/shim/shimx64.efi.signed.latest" \
 # flag file used by grubx64.EFI to find the boot partition
 mkdir -p "${MNTDIR}/.disk"
 echo "Golem Live USB" > "${MNTDIR}/.disk/info"
+
+# Umount root filesystem
+umount "${MNTDIR}/boot/efi"
+umount "${MNTDIR}"
+
+# Mount conf filesystem
+mount "${CONF_DEV}" "${MNTDIR}"
+cat > "${MNTDIR}/golemwz-example.toml" << EOF
+#accepted_terms = true
+#glm_account = "0x..."
+#glm_per_hour = "0.25"
+EOF
 
 # Generate BIOS bootable GRUB image
 grub-install \

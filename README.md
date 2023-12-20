@@ -181,3 +181,16 @@ The APT repository combines the following components:
 Specific versions of each of them are defined in the worklow file mentioned above. They can be specified as a pattern (preferable) which means "latest version matching the pattern".
 
 It is important for the GPU isolation security to update golem-nvidia-kernel frequently. See README in that repository for instructions.
+
+## First boot configuration
+
+A partition with label `Golem conf storage` has an example configuration file `golemwz.toml` that will be loaded by the wizard on first boot.
+It can be customized to set up pre-defined values expected by the wizard. For example:
+```toml
+accepted_terms = true
+glm_account = "0x..."
+glm_per_hour = "0.25"
+```
+makes terms accepted, defines the wallet account to use, set GLM per hour value and set GLM initial price.
+Once the wizard writes its final configuration file, the first boot configuration file will be deleted.
+Any further attempt to provide a first boot configuration file into the `Golem conf storage` will be ignored.
