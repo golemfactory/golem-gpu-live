@@ -166,9 +166,9 @@ The log files are located into `~/.local/share/yagna`.
 This needs to be done once, by the maintainer.
 
 The repository is built in GitHub Actions and then uploaded to GitHub Pages. To set it up:
-1. Create GPG key (just for signing), upload its private part to `APT_GPG_KEY` secret in the repository and save its public part into a file in `rootfs/` directory.
+1. Create a GPG key (just for signing), upload its private part to `APT_GPG_KEY` secret in the repository and save its public part into a file in `rootfs/` directory.
 2. Adjust repository URL and key file name in `rootfs/Dockerfile` (at the very beginning).
-3. Setup schedule or other trigger to your liking for the workflow defined in `.github/workflows/repository.yml`.
+3. Setup schedule or another trigger to your liking for the workflow defined in `.github/workflows/repository.yml`.
 
 The APT repository combines the following components:
  - yagna
