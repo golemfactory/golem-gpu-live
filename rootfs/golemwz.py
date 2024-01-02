@@ -319,7 +319,7 @@ def configure_storage(device, resize_partition):
         device = Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
         if device and Path(f"/dev/{device}").exists():
             disk_operations = [
-                f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 4 /dev/{device}",
+                f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 5 /dev/{device}",
                 f"partprobe /dev/{device}",
                 "udevadm settle",
                 f"e2fsck -fy {devname_path}",
