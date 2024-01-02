@@ -73,7 +73,7 @@ Assuming your USB stick is referenced as `/dev/sda` on your system, under `work`
 sudo dd if=work/golem-gpu-live-VERSION.img of=/dev/sda
 ```
 
-The image contains a fourth partition for persistent storage with label `Golem storage`. It contains a hard-coded value for `PARTUUID` and if selected later for storage, it would be resized to the maximum available space remaining on the USB stick.
+The image contains a fifth partition for persistent storage with label `Golem storage`. It contains a hard-coded value for `PARTUUID` and if selected later for storage, it would be resized to the maximum available space remaining on the USB stick.
 
 User can use another partition for persistent storage on another disk, but it has to be formatted with any Linux compatible filesystem.
 
