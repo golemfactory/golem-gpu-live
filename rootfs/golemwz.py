@@ -813,9 +813,7 @@ def main(args, wizard_conf, wizard_dialog):
                 break
 
         if selected_gpu:
-            wizard_dialog.msgbox(
-                f"Selected GPU: {selected_gpu['slot']} (VFIO: {selected_gpu['vfio']})"
-            )
+            wizard_dialog.msgbox(f"Selected GPU: {selected_gpu['description']}")
 
         if not code or not selected_gpu:
             raise WizardError("Invalid GPU selection.")
