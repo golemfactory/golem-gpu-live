@@ -24,6 +24,8 @@ locale.setlocale(locale.LC_ALL, "")
 PCI_VGA_CLASS_ID = "0300"
 PCI_AUDIO_CLASS_ID = "0403"
 PCI_BRIDGE_CLASS_ID = "0604"
+DURATION_GLM_PER_HOUR_DEFAULT = 1.0
+CPU_GLM_PER_HOUR_DEFAULT = 0.0
 
 logger = logging.getLogger(__name__)
 
@@ -762,12 +764,11 @@ def main(args, wizard_conf, wizard_dialog):
 
     glm_per_hour = (
         wizard_conf.get("glm_per_hour", None)
-        or wizard_dialog.inputbox("GLM per hour:", init="0.25")
-        or 0.25
+        or wizard_dialog.inputbox("GLM per hour:", init=str(DURATION_GLM_PER_HOUR_DEFAULT))
+        or DURATION_GLM_PER_HOUR_DEFAULT
     )
     try:
-        cpu_price = float(glm_per_hour) / 3600.0
-        duration_price = cpu_price / 5.0
+        duration_price = float(glm_per_hour) / 3600.0
     except ValueError as e:
         raise WizardError(f"Invalid GLM values: {str(e)}")
 
@@ -878,7 +879,7 @@ def main(args, wizard_conf, wizard_dialog):
                 runtime_id="vm-nvidia",
                 account=glm_account,
                 duration_price=duration_price,
-                cpu_price=cpu_price,
+                cpu_price=CPU_GLM_PER_HOUR_DEFAULT,
             )
             wizard_conf["preset_configured"] = True
         except subprocess.CalledProcessError as e:
