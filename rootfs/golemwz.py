@@ -49,8 +49,11 @@ def get_ip_addresses():
 
 
 def get_random_string(length):
-    letters = string.ascii_letters + string.digits
-    return "".join(random.choice(letters) for _ in range(length))
+    misleading_characters = '0Ool1'
+    standard_characters = string.ascii_letters + string.digits
+    excluded_characters = set(misleading_characters)
+    characters_pool = list(set(standard_characters) - excluded_characters)
+    return "".join(random.choices(characters_pool, k=length))
 
 
 def is_mount_needed(directory, expected_device_path):
