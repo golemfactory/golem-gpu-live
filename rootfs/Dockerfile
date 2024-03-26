@@ -116,3 +116,7 @@ RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.tar
 # Setup motd
 RUN bash -c "rm -rf /etc/update-motd.d/*"
 COPY 00-header /etc/update-motd.d/
+
+# Setup grub
+COPY grub /etc/default/grub
+
