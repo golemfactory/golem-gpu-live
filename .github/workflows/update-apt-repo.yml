@@ -7,7 +7,7 @@ on:
       - dev-*
 
 env:
-  yagna_tag: pre-rel-v0.14.0-rc1
+  yagna_tag: v0.15.0
   ya-runtime-wasi_tag: pre-rel-v0.2.4
   ya-installer-resources_tag: ^v.*
   ya-runtime-vm_tag: ^pre-rel-v0.4.0-ITL-.*
