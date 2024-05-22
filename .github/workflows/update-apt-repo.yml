@@ -105,6 +105,8 @@ jobs:
           ./update-local-repository.sh ./packages $TARGET_DIR ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
 
       - name: Commit new packages to golem-apt-repository
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd ${{ env.apt-sub-repo }}
           git config --global user.name '${{ github.actor }}'
