@@ -16,7 +16,6 @@ env:
 
   distribution: testing
   apt-sub-repo: apt-repo
-  target-dir: ./${{ env.apt-sub-repo }}/${{ env.testing }}
 
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -100,8 +99,10 @@ jobs:
           GPG_KEY: ${{ secrets.APT_GPG_KEY }}
       - name: Create repository
         run: |
+          TARGET_DIR="./${{ env.apt-sub-repo }}/${{ env.distribution }}"
+          
           sudo apt-get -qy install reprepro
-          ./update-local-repository.sh ./packages ${{ env.target-dir }} ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
+          ./update-local-repository.sh ./packages $TARGET_DIR ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
 
       - name: Commit new packages to golem-apt-repository
         run: |
