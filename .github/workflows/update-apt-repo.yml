@@ -1,0 +1,112 @@
+name: Repository
+on:
+  push:
+    tags:
+      - stable-*
+      - testing-*
+      - dev-*
+
+env:
+  yagna_tag: pre-rel-v0.14.0-rc1
+  ya-runtime-wasi_tag: pre-rel-v0.2.4
+  ya-installer-resources_tag: ^v.*
+  ya-runtime-vm_tag: ^pre-rel-v0.4.0-ITL-.*
+  ya-runtime-vm-nvidia_tag: ^pre-rel-v0.1.3-.*
+  golem-nvidia-kernel_tag: ^v.*
+
+  distribution: testing
+  apt-sub-repo: apt-repo
+  target-dir: ./${{ env.apt-sub-repo }}/${{ env.testing }}
+
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  update-repo:
+    name: "Fetch packages and build repository"
+    runs-on: ubuntu-22.04
+
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+
+    steps:
+      # Download all deb packages
+      - uses: actions/checkout@v1
+      - name: "Get deb package: yagna"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: yagna
+          pattern: ${{ env.yagna_tag }}
+          prerelease: true
+
+      - name: "Get deb package: ya-runtime-wasi"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: ya-runtime-wasi
+          pattern: ${{ env.ya-runtime-wasi_tag }}
+          prerelease: true
+
+      - name: "Get deb package: ya-installer-resources"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: ya-installer-resources
+          pattern: ${{ env.ya-installer-resources_tag }}
+          prerelease: true
+
+      - name: "Get deb package: ya-runtime-vm"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: ya-runtime-vm
+          pattern: ${{ env.ya-runtime-vm_tag }}
+          prerelease: true
+
+      - name: "Get deb package: ya-runtime-vm-nvidia"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          owner: golemfactory
+          repo: ya-runtime-vm-nvidia
+          pattern: ${{ env.ya-runtime-vm-nvidia_tag }}
+          prerelease: true
+
+      - name: "Get deb package: golem-nvidia-kernel"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          owner: golemfactory
+          repo: golem-nvidia-kernel
+          pattern: ${{ env.golem-nvidia-kernel_tag }}
+          prerelease: true
+
+      - name: Extract Version
+        id: tag
+        uses: actions/github-script@0.2.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            return context.payload.ref.replace(/\/refs\/tags\//, '');
+
+      - name: Checkout golem-apt-repository
+        uses: actions/checkout@v4
+        with:
+          repository: golemfactory/golem-apt-repository
+          path: apt-repo
+
+      - name: Import GPG key
+        id: gpg_key
+        run: |
+          echo "$GPG_KEY" | gpg --batch --import
+          printf "keyid=%s\n" $(gpg -K --with-colons |grep ^fpr|cut -f 10 -d :) >> "$GITHUB_OUTPUT"
+        env:
+          GPG_KEY: ${{ secrets.APT_GPG_KEY }}
+      - name: Create repository
+        run: |
+          sudo apt-get -qy install reprepro
+          ./update-local-repository.sh ./packages ${{ env.target-dir }} ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
+
+      - name: Commit new packages to golem-apt-repository
+        run: |
+          cd ${{ env.apt-sub-repo }}
+          git config --global user.name '${{ github.actor }}'
+          git config --global user.email '${{ github.actor }}@users.noreply.github.com'
+          git commit -am "Automated apt package build ${{ steps.tag.outputs.result }}"
+          git push
