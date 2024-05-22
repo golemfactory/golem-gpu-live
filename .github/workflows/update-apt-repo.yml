@@ -24,10 +24,9 @@ jobs:
     name: "Fetch packages and build repository"
     runs-on: ubuntu-22.04
 
-    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    # Grant GITHUB_TOKEN the permissions required to push to `golem-apt-repository`
     permissions:
-      pages: write      # to deploy to Pages
-      id-token: write   # to verify the deployment originates from an appropriate source
+      contents: write
 
     steps:
       # Download all deb packages
