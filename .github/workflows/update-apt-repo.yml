@@ -31,7 +31,7 @@ jobs:
 
     steps:
       # Download all deb packages
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v4
       - name: "Get deb package: yagna"
         uses: ./.github/actions/fetch-release-deb
         with:
@@ -109,5 +109,6 @@ jobs:
           cd ${{ env.apt-sub-repo }}
           git config --global user.name '${{ github.actor }}'
           git config --global user.email '${{ github.actor }}@users.noreply.github.com'
-          git commit -am "Automated apt package build ${{ steps.tag.outputs.result }}"
+          git add --all
+          git commit -m "Automated apt package build ${{ steps.tag.outputs.result }}"
           git push
