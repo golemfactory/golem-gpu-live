@@ -104,13 +104,14 @@ jobs:
           sudo apt-get -qy install reprepro
           ./update-local-repository.sh ./packages $TARGET_DIR ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
 
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
       - name: Commit new packages to golem-apt-repository
         run: |
           cd ${{ env.apt-sub-repo }}
-          git config --global user.name "GitHub Actions Bot"
-          git config --global user.email "<>"
-          git config --unset-all http.https://github.com/.extraheader
-
-          git add --all
-          git commit -m "Automated apt package build ${{ steps.tag.outputs.result }}"
-          git push
+          aws s3 sync . s3://repo-golem-gpu-live
