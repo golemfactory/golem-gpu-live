@@ -65,7 +65,7 @@ jobs:
     - name: "Get deb package: golem-nvidia-kernel"
       uses: ./.github/actions/fetch-release-deb
       with:
-        owner: fepitre
+        owner: golemfactory
         repo: golem-nvidia-kernel
         pattern: ${{ env.golem-nvidia-kernel_tag }}
         prerelease: true

@@ -11,6 +11,7 @@ Type=simple
 User=golem
 Group=golem
 Environment=HOME=/home/golem
+Environment=YAGNA_METRICS_GROUP=GolemGpuLive
 LimitMEMLOCK=infinity
 PIDFile=/home/golem/.local/share/ya-provider/ya-provider.pid
 
