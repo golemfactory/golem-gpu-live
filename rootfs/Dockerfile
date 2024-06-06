@@ -119,4 +119,3 @@ COPY 00-header /etc/update-motd.d/
 
 # Setup grub
 COPY grub /etc/default/grub
-

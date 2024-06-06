@@ -100,7 +100,7 @@ jobs:
       - name: Create repository
         run: |
           TARGET_DIR="./${{ env.apt-sub-repo }}/${{ env.distribution }}"
-          
+
           sudo apt-get -qy install reprepro
           ./update-local-repository.sh ./packages $TARGET_DIR ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
 

@@ -1,0 +1,43 @@
+name: Build Image
+on:
+  push:
+    branches:
+    - devel
+  workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release type'
+        type: choice
+        required: true
+        options:
+          - stable
+          - testing
+          - unstable
+
+jobs:
+  build:
+    name: "Fetch packages and build repository"
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          sudo apt install \
+            debootstrap \
+            squashfs-tools \
+            xorriso \
+            isolinux \
+            syslinux-efi \
+            grub-pc-bin \
+            grub-efi-amd64-bin \
+            grub-efi-ia32-bin \
+            mtools \
+            dosfstools \
+            jq \
+            rsync \
+            docker.io
+      - run: |
+          sudo make root image
+
+      - run: |
+          ks -al work/
