@@ -1,8 +1,9 @@
 name: Build Image
 on:
   push:
-    branches:
-    - devel
+    tags:
+      - testing-v[0-9]+.*
+      - release-v.*
   workflow_dispatch:
     inputs:
       release:
@@ -10,34 +11,144 @@ on:
         type: choice
         required: true
         options:
-          - stable
+          - release
           - testing
           - unstable
+env:
+  VERSION: v0.15.0-${{ github.run_number }}
+
+  yagna_tag: v0.15.0
+  ya-runtime-wasi_tag: pre-rel-v0.2.4
+  ya-installer-resources_tag: ^v.*
+  ya-runtime-vm_tag: ^pre-rel-v0.4.0-ITL-.*
+  ya-runtime-vm-nvidia_tag: ^pre-rel-v0.1.3-.*
+  golem-nvidia-kernel_tag: ^v.*
+
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:
-  build:
+  upload-repo:
     name: "Fetch packages and build repository"
     runs-on: ubuntu-22.04
 
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+
     steps:
       - uses: actions/checkout@v4
+      - name: 'set release type'
+        run: |
+          ./version.sh "${{ github.event.inputs.release }}" "${{ github.ref }}" >> $GITHUB_ENV
+      - name: "Get deb package: yagna"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: yagna
+          pattern: ${{ env.yagna_tag }}
+          prerelease: false
+      - name: "Get deb package: ya-runtime-wasi"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: ya-runtime-wasi
+          pattern: ${{ env.ya-runtime-wasi_tag }}
+          prerelease: true
+
+      - name: "Get deb package: ya-installer-resources"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: ya-installer-resources
+          pattern: ${{ env.ya-installer-resources_tag }}
+          prerelease: true
+
+      - name: "Get deb package: ya-runtime-vm"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          repo: ya-runtime-vm
+          pattern: ${{ env.ya-runtime-vm_tag }}
+          prerelease: true
+
+      - name: "Get deb package: ya-runtime-vm-nvidia"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          owner: golemfactory
+          repo: ya-runtime-vm-nvidia
+          pattern: ${{ env.ya-runtime-vm-nvidia_tag }}
+          prerelease: true
+
+      - name: "Get deb package: golem-nvidia-kernel"
+        uses: ./.github/actions/fetch-release-deb
+        with:
+          owner: golemfactory
+          repo: golem-nvidia-kernel
+          pattern: ${{ env.golem-nvidia-kernel_tag }}
+          prerelease: true
+
+      - name: Import GPG key
+        id: gpg_key
+        env:
+          GPG_KEY: ${{ secrets.APT_GPG_KEY }}
+        run: |
+          echo "$GPG_KEY" | gpg --batch --import
+          printf "keyid=%s\n" $(gpg -K --with-colons |grep ^fpr|cut -f 10 -d :) >> "$GITHUB_OUTPUT"
+
+      - name: Create repository
+        run: |
+          TARGET_DIR="./${{ env.apt-sub-repo }}/${{ env.distribution }}"
+
+          sudo apt-get -qy install reprepro
+          ./update-local-repository.sh ./packages $TARGET_DIR ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Commit new packages to golem-apt-repository
+        run: |
+          cd ${{ env.apt-sub-repo }}
+          aws s3 sync "./${{ env.apt-sub-repo }}/${{ env.distribution }}/" "s3://repo-golem-gpu-live/${{ env.distribution }}/"
+
+      - name: Upload repository artifact
+        uses: actions/upload-pages-artifact@v2
+        if: env.DIST_TYPE == 'release'
+        with:
+          path: ${{ env.apt-sub-repo }}/${{ env.distribution }}
+
+
+  build:
+    name: Building Image ${{ github.ref }}
+    runs-on: ubuntu-22.04
+    needs:
+      - upload-repo
+    steps:
+      - uses: actions/checkout@v4
+      - name: 'set release type'
+        run: |
+          ./version.sh "${{ github.event.inputs.release }}" "${{ github.ref }}" >> $GITHUB_ENV
       - run: |
           sudo apt install \
-            debootstrap \
-            squashfs-tools \
-            xorriso \
-            isolinux \
-            syslinux-efi \
-            grub-pc-bin \
-            grub-efi-amd64-bin \
-            grub-efi-ia32-bin \
-            mtools \
-            dosfstools \
-            jq \
-            rsync \
-            docker.io
+            debootstrap squashfs-tools xorriso isolinux \
+            syslinux-efi grub-pc-bin grub-efi-amd64-bin \
+            grub-efi-ia32-bin mtools dosfstools \
+            jq rsync
       - run: |
-          sudo make root image
+          BUILD_ARGS="--build-arg APT_REPO=https://gpu-live.cdn.golem.network/${DIST_TYPE}" make root image
 
-      - run: |
-          ks -al work/
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: eu-central-1
+
+      - name: Sending image to S3
+        run: |
+          set -x
+          ls -al work/
+          ls -alh work/golem-gpu-live-${VERSION}.img
+          sudo xz work/golem-gpu-live-${VERSION}.img
+
+          sudo chown $USER work/* work
+          aws s3 cp work/golem-gpu-live-${VERSION}.img.xz s3://repo-golem-gpu-live/images/golem-gpu-live-${DIST_TYPE}-${VERSION}.img.xz
