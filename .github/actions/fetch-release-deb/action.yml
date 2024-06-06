@@ -25,7 +25,7 @@ runs:
   steps:
     - name: "Get release"
       id: get_release
-      uses: joutvhu/get-release@v1.0.2
+      uses: joutvhu/get-release@v1
       with:
         owner: ${{ inputs.owner }}
         repo: ${{ inputs.repo }}
@@ -33,7 +33,7 @@ runs:
         pattern: ${{ inputs.pattern }}
         prerelease: ${{ inputs.prerelease }}
     - name: "Fetch deb package: yagna"
-      uses: robinraju/release-downloader@v1.8
+      uses: robinraju/release-downloader@v1.10
       with:
         repository: ${{ inputs.owner }}/${{ inputs.repo }}
         tag: ${{ steps.get_release.outputs.tag_name }}

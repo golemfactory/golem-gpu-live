@@ -1,6 +1,8 @@
 name: Build Image
 on:
   push:
+    branches:
+      - devel
     tags:
       - testing-v[0-9]+.*
       - v[0-9]+.*
@@ -119,6 +121,10 @@ jobs:
         with:
           path: ${{ env.apt-sub-repo }}/${{ env.DIST_TYPE }}
 
+      - name: Deploy to GitHub Pages
+        if: env.DIST_TYPE == 'release'
+        id: deployment
+        uses: actions/deploy-pages@v2
 
   build:
     name: Building Image ${{ github.ref }}
