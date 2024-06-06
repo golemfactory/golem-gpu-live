@@ -3,7 +3,7 @@ on:
   push:
     tags:
       - testing-v[0-9]+.*
-      - release-v.*
+      - v[0-9]+.*
   workflow_dispatch:
     inputs:
       release:
@@ -23,6 +23,8 @@ env:
   ya-runtime-vm_tag: ^pre-rel-v0.4.0-ITL-.*
   ya-runtime-vm-nvidia_tag: ^pre-rel-v0.1.3-.*
   golem-nvidia-kernel_tag: ^v.*
+
+  apt-sub-repo: apt-repo
 
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -93,7 +95,8 @@ jobs:
 
       - name: Create repository
         run: |
-          TARGET_DIR="./${{ env.apt-sub-repo }}/${{ env.distribution }}"
+          TARGET_DIR="./${{ env.apt-sub-repo }}/${{ env.DIST_TYPE }}"
+          mkdir -p "$TARGET_DIR"
 
           sudo apt-get -qy install reprepro
           ./update-local-repository.sh ./packages $TARGET_DIR ubuntu jammy ${{ steps.gpg_key.outputs.keyid }}
@@ -107,14 +110,14 @@ jobs:
 
       - name: Commit new packages to golem-apt-repository
         run: |
-          cd ${{ env.apt-sub-repo }}
-          aws s3 sync "./${{ env.apt-sub-repo }}/${{ env.distribution }}/" "s3://repo-golem-gpu-live/${{ env.distribution }}/"
+          cd "./${{ env.apt-sub-repo }}"
+          aws s3 sync "${{ env.DIST_TYPE }}/" "s3://repo-golem-gpu-live/${{ env.DIST_TYPE }}/"
 
       - name: Upload repository artifact
         uses: actions/upload-pages-artifact@v2
         if: env.DIST_TYPE == 'release'
         with:
-          path: ${{ env.apt-sub-repo }}/${{ env.distribution }}
+          path: ${{ env.apt-sub-repo }}/${{ env.DIST_TYPE }}
 
 
   build:
