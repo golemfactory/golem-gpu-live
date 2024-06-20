@@ -602,6 +602,9 @@ def setup_logging(debug=False):
 
 
 def main(args, wizard_conf, wizard_dialog):
+    if not Path("/sys/firmware/efi").exists():
+        wizard_dialog.msgbox("System is not started in UEFI mode!")
+
     #
     # TERMS OF USE
     #
@@ -938,6 +941,7 @@ if __name__ == "__main__":
         args = parse_args()
 
         setup_logging(args.debug)
+
         mount_conf_storage()
 
         wizard_conf = {}
