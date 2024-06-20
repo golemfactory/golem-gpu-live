@@ -49,7 +49,7 @@ def get_ip_addresses():
 
 
 def get_random_string(length):
-    misleading_characters = '0Ool1'
+    misleading_characters = "0Ool1"
     standard_characters = string.ascii_letters + string.digits
     excluded_characters = set(misleading_characters)
     characters_pool = list(set(standard_characters) - excluded_characters)
@@ -402,7 +402,7 @@ def configure_runtime(runtime_path, selected_gpu):
     runtime_path.write_text(json.dumps(runtime_content, indent=4))
 
 
-def configure_preset(runtime_id, account, duration_price, cpu_price):
+def configure_preset(runtime_id, account, duration_price, cpu_price, node_name=None):
     env = get_env()
 
     if not account:
@@ -426,6 +426,17 @@ def configure_preset(runtime_id, account, duration_price, cpu_price):
         "/usr/lib/yagna/installer",
     ]
     subprocess.run(golemsp_manifest_bundle_cmd, check=True, env=env)
+
+    # Set node name if provided
+    if node_name:
+        golemsp_set_node_name_cmd = [
+            "golemsp",
+            "settings",
+            "set",
+            "--node-name",
+            node_name,
+        ]
+        subprocess.run(golemsp_set_node_name_cmd, check=True, env=env)
 
     pricing_cmd = [
         "--pricing",
@@ -560,6 +571,7 @@ def parse_args():
         default=False,
         help="Configure only persistent storage.",
     )
+    parser.add_argument("--glm-node-name", default=None, help="Node name.")
     parser.add_argument("--glm-account", default=None, help="Account for payments.")
     parser.add_argument(
         "--glm-per-hour", default=None, help="Recommended default value is 0.25."
@@ -774,7 +786,9 @@ def main(args, wizard_conf, wizard_dialog):
 
     glm_per_hour = (
         wizard_conf.get("glm_per_hour", None)
-        or wizard_dialog.inputbox("GLM per hour:", init=str(DURATION_GLM_PER_HOUR_DEFAULT))
+        or wizard_dialog.inputbox(
+            "GLM per hour:", init=str(DURATION_GLM_PER_HOUR_DEFAULT)
+        )
         or DURATION_GLM_PER_HOUR_DEFAULT
     )
     try:
@@ -882,12 +896,18 @@ def main(args, wizard_conf, wizard_dialog):
 
     logging.info("Configure preset.")
     if not wizard_conf.get("preset_configured", False):
+        glm_node_name = wizard_conf.get(
+            "glm_node_name", None
+        ) or wizard_dialog.inputbox(
+            "Node name (leave empty for automatic generated name):"
+        )
         try:
             configure_preset(
                 runtime_id="vm-nvidia",
                 account=glm_account,
                 duration_price=duration_price,
                 cpu_price=CPU_GLM_PER_HOUR_DEFAULT,
+                node_name=glm_node_name,
             )
             wizard_conf["preset_configured"] = True
         except subprocess.CalledProcessError as e:
@@ -968,6 +988,9 @@ if __name__ == "__main__":
             logger.error(
                 f"Failed to read configuration file '{wizard_conf_path}': {str(e)}"
             )
+
+        if args.glm_node_name:
+            wizard_conf["glm_node_name"] = args.glm_node_name
 
         if args.glm_account:
             wizard_conf["glm_account"] = args.glm_account
