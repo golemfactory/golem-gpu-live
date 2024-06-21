@@ -298,6 +298,10 @@ def fix_paths(runtime_files_dir):
 
 def mount_conf_storage():
     dev_partlabel = "/dev/disk/by-partlabel/Golem\\x20conf\\x20storage"
+
+    if not is_mount_needed("/mnt", dev_partlabel):
+        return
+
     mount_cmd = ["sudo", "mount", dev_partlabel, "/mnt"]
     try:
         subprocess.run(mount_cmd, check=True)
