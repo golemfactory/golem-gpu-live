@@ -21,13 +21,183 @@ from dialog import Dialog
 
 locale.setlocale(locale.LC_ALL, "")
 
+import subprocess
+import os
+import glob
+from pathlib import Path
+from collections import defaultdict
+
+PCI_HOST_BRIDGE_CLASS_ID = "0600"
+PCI_BUS_BRIDGE_CLASS_ID = "0604"
+
 PCI_VGA_CLASS_ID = "0300"
-PCI_AUDIO_CLASS_ID = "0403"
-PCI_BRIDGE_CLASS_ID = "0604"
+
+RELAXED_PCI_CLASSES = [PCI_HOST_BRIDGE_CLASS_ID, PCI_BUS_BRIDGE_CLASS_ID]
+
 DURATION_GLM_PER_HOUR_DEFAULT = 1.0
 CPU_GLM_PER_HOUR_DEFAULT = 0.0
 
 logger = logging.getLogger(__name__)
+
+
+class PCIDevice:
+    def __init__(
+        self, slot, class_code, vendor, device, description=None, iommu_group=None
+    ):
+        self.slot = slot
+        self.class_code = class_code
+        self.vendor = vendor
+        self.device = device
+        self.description = description
+        self.iommu_group = iommu_group
+
+        self.parent = None
+        self.children = []
+        self.consumers = []
+
+    def __repr__(self):
+        return f"PCIDevice(slot={self.slot}, class_code={self.class_code}, vendor={self.vendor}, device={self.device}, iommu_group={self.iommu_group})"
+
+    def is_vga(self):
+        return self.class_code == PCI_VGA_CLASS_ID
+
+
+class PCIParser:
+    def __init__(self):
+        self.devices = []
+        self.iommu_groups = defaultdict(list)
+
+    @staticmethod
+    def _fetch_device_description(slot):
+        result = subprocess.run(
+            ["lspci", "-D", "-vmm", "-s", slot], stdout=subprocess.PIPE, text=True
+        )
+        for line in result.stdout.splitlines():
+            if line.startswith("Device"):
+                return line.split(":", 1)[-1].strip()
+
+    @staticmethod
+    def _parse_lspci(lspci_output):
+        pci_devices = {}
+        device_blocks = lspci_output.strip().split("\n\n")
+
+        for block in device_blocks:
+            current_device = {}
+            for line in block.splitlines():
+                key, value = line.split(":", 1)
+                current_device[key.strip()] = value.strip()
+
+            slot = current_device.get("Slot")
+            if slot:
+                pci_devices[slot] = PCIDevice(
+                    slot=slot,
+                    class_code=current_device.get("Class", ""),
+                    vendor=current_device.get("Vendor", ""),
+                    device=current_device.get("Device", ""),
+                    iommu_group=int(current_device.get("IOMMUGroup"))
+                    if current_device.get("IOMMUGroup")
+                    else None,
+                )
+        return pci_devices
+
+    def _get_pci_devices(self):
+        # Run lspci to get the list of PCI devices with detailed information
+        lspci_command = ["lspci", "-D", "-vmm", "-n"]
+        lspci_output = subprocess.run(
+            lspci_command, check=True, text=True, capture_output=True
+        ).stdout
+
+        lspci_command = ["lspci", "-D", "-vmm"]
+        lspci_output_strings = subprocess.run(
+            lspci_command, check=True, text=True, capture_output=True
+        ).stdout
+
+        pci_devices = self._parse_lspci(lspci_output)
+        pci_devices_with_strings = self._parse_lspci(lspci_output_strings)
+
+        for slot in pci_devices:
+            pci_device = pci_devices_with_strings[slot]
+            pci_devices[
+                slot
+            ].description = (
+                f"{pci_device.class_code} {pci_device.vendor} {pci_device.device}"
+            )
+
+        return pci_devices
+
+    @staticmethod
+    def _build_device_hierarchy(pci_devices):
+        for device in pci_devices.values():
+            # Determine the parent by resolving the full path of the device in sysfs
+            device_path = f"/sys/bus/pci/devices/{device.slot}"
+            full_path = Path(device_path).resolve()
+            parent_path = full_path.parent
+            parent_slot = parent_path.name
+            if parent_slot in pci_devices:
+                device.parent = pci_devices[parent_slot]
+                pci_devices[parent_slot].children.append(device)
+
+            # Find consumer devices
+            consumer_pattern = f"/sys/bus/pci/devices/{device.slot}/consumer:pci:*"
+            for consumer_path in glob.glob(consumer_pattern):
+                consumer_slot = Path(consumer_path).name.lstrip("consumer:pci:")
+                if consumer_slot in pci_devices:
+                    device.consumers.append(pci_devices[consumer_slot])
+            device.consumers = sorted(device.consumers, key=lambda x: x.slot)
+
+        return pci_devices
+
+    @staticmethod
+    def _build_iommu_groups(pci_devices):
+        iommu_groups = defaultdict(list)
+        groups_dict = defaultdict(list)
+        for device in pci_devices.values():
+            if device.iommu_group is not None:
+                groups_dict[device.iommu_group].append(device)
+
+        for group, devices in sorted(groups_dict.items()):
+            iommu_groups[group] = sorted(devices, key=lambda x: x.slot)
+
+        return iommu_groups
+
+    def get_devices(self, class_code=None, vendor=None):
+        if not self.devices:
+            pci_devices = self._get_pci_devices()
+            pci_devices = self._build_device_hierarchy(pci_devices)
+            self.iommu_groups = self._build_iommu_groups(pci_devices)
+            self.devices = pci_devices.values()
+        devices = self.devices
+        if class_code:
+            devices = filter(lambda x: x.class_code == class_code, devices)
+        if vendor:
+            devices = filter(lambda x: x.vendor == vendor, devices)
+        return list(devices)
+
+    def get_parents(self, device):
+        if device.parent:
+            return self.get_parents(device.parent) + [device.parent]
+        else:
+            return []
+
+    def get_related_devices(self, device):
+        return sorted(
+            self.get_parents(device) + [device] + device.consumers, key=lambda x: x.slot
+        )
+
+    def is_isolated(self, device, relax=False, insecure=False):
+        group_devices = set(self.iommu_groups[device.iommu_group])
+        related_devices = set(self.get_related_devices(device))
+        remaining_devices = group_devices.union(
+            related_devices
+        ) - group_devices.intersection(related_devices)
+        if insecure or len(group_devices) <= 1 or not remaining_devices:
+            return True
+        elif relax:
+            for remaining_device in remaining_devices:
+                if remaining_device.class_code not in RELAXED_PCI_CLASSES:
+                    return False
+            return True
+        return False
 
 
 class WizardError(Exception):
@@ -79,146 +249,29 @@ def is_mount_needed(directory, expected_device_path):
         raise WizardError(str(e)) from e
 
 
-def get_iommu_groups():
-    iommu_groups = []
-    if os.path.exists("/sys/kernel/iommu_groups"):
-        iommu_groups = os.listdir("/sys/kernel/iommu_groups")
-    return sorted(iommu_groups, key=lambda x: int(x))
+def select_compatible_gpus(allow_pci_bridge=True, insecure=False):
+    parser = PCIParser()
+    gpu_devices = parser.get_devices(class_code=PCI_VGA_CLASS_ID, vendor="10de")
 
+    gpus = {}
+    bad_isolation_groups = []
 
-def get_iommu_group_devices(iommu_group):
-    devices = []
-    devices_path = f"/sys/kernel/iommu_groups/{iommu_group}/devices"
-    if os.path.exists(devices_path):
-        devices = os.listdir(devices_path)
-    return devices
-
-
-def get_pci_full_string_description_from_slot(slot):
-    result = subprocess.run(["lspci", "-s", slot], capture_output=True, text=True)
-    return result.stdout.strip()
-
-
-def get_pci_short_string_description_from_slot(slot):
-    full_description = get_pci_full_string_description_from_slot(slot)
-    return full_description.split(": ", 1)[1]
-
-
-def list_pci_devices_in_iommu_group(devices):
-    return [get_pci_full_string_description_from_slot(device) for device in devices]
-
-
-def get_vid_pid_from_slot(slot):
-    result = subprocess.run(["lspci", "-n", "-s", slot], capture_output=True, text=True)
-    return result.stdout.split()[2]
-
-
-def get_class_from_slot(slot):
-    result = subprocess.run(["lspci", "-n", "-s", slot], capture_output=True, text=True)
-    return result.stdout.split()[1].rstrip(":")
-
-
-def parse_devices(devices, allowed_classes):
-    parsed_devices = {}
-    for device in devices:
-        device_class = get_class_from_slot(device)
-        if device_class in allowed_classes:
-            parsed_devices.setdefault(device_class, []).append(device)
-    return parsed_devices
-
-
-def has_only_allowed_devices(parsed_devices, devices):
-    filtered_devices_list = [
-        device for devices in parsed_devices.values() for device in devices
-    ]
-    return set(filtered_devices_list) == set(devices)
-
-
-def is_pci_bridge_of_device(pci_bridge_device: str, device: str):
-    parsed_bridge_device = pci_bridge_device.split(":")
-    if len(parsed_bridge_device) != 3:
-        raise WizardError(f"Cannot parse PCI bridge device: '{pci_bridge_device}'")
-    domain, bus, _ = parsed_bridge_device
-    device_path = f"/sys/bus/pci/devices/{device}"
-    real_device_path = f"/sys/devices/pci{domain}:{bus}/{pci_bridge_device}/{device}"
-    return os.path.realpath(device_path) == real_device_path
-
-
-def is_pci_supplier_of_device(pci_supplier_device: str, device: str):
-    device_path = f"/sys/bus/pci/devices/{device}/supplier:pci:{pci_supplier_device}"
-    return os.path.exists(device_path)
-
-
-def select_gpu_compatible(allow_pci_bridge=True):
-    allowed_classes = [PCI_VGA_CLASS_ID, PCI_AUDIO_CLASS_ID]
-    if allow_pci_bridge:
-        allowed_classes.append(PCI_BRIDGE_CLASS_ID)
-
-    gpu_list = []
-    bad_isolation_groups = {}
-
-    iommu_groups = get_iommu_groups()
-    for iommu_group in iommu_groups:
-        devices = get_iommu_group_devices(iommu_group)
-        parsed_devices = parse_devices(devices, allowed_classes)
-
-        # Check if a GPU exists
-        if PCI_VGA_CLASS_ID not in parsed_devices:
-            continue
-
-        pci_vga_device = parsed_devices[PCI_VGA_CLASS_ID][0]
-        pci_bridge_device = parsed_devices.get(PCI_BRIDGE_CLASS_ID, [""])[0]
-        pci_audio_device = parsed_devices.get(PCI_AUDIO_CLASS_ID, [""])[0]
-
-        # Check if we have:
-        # 1. Only allowed devices
-        # 2. At most, one PCI bridge device
-        # 3. At most, one PCI audio device
-        # 4. Only one GPU (we checked that one exists before)
-        # 5. PCI bridge device is the parent of GPU device
-        # 6. GPU device is a supplier for audio device
-        if (
-            not has_only_allowed_devices(parsed_devices, devices)
-            or len(parsed_devices.get(PCI_BRIDGE_CLASS_ID, [])) > 1
-            or len(parsed_devices.get(PCI_AUDIO_CLASS_ID, [])) > 1
-            or len(parsed_devices[PCI_VGA_CLASS_ID]) > 1
-            or (
-                pci_bridge_device
-                and not is_pci_bridge_of_device(pci_bridge_device, pci_vga_device)
+    for device in gpu_devices:
+        if not parser.is_isolated(device, relax=allow_pci_bridge, insecure=insecure):
+            bad_isolation_groups.append(
+                (device, parser.iommu_groups[device.iommu_group])
             )
-            or (
-                pci_audio_device
-                and not is_pci_supplier_of_device(pci_vga_device, pci_audio_device)
-            )
-        ):
-            bad_isolation_groups[iommu_group] = list_pci_devices_in_iommu_group(devices)
             continue
+        vfio_devices = [device.slot for device in [device] + device.consumers]
+        vfio = ",".join([slot for slot in vfio_devices])
+        gpus[device.slot] = {
+            "vfio": vfio,
+            "slot": device.slot,
+            "description": device.description,
+            "vfio_devices": vfio_devices,
+        }
 
-        gpu_vga_slot = parsed_devices[PCI_VGA_CLASS_ID][0]
-        vfio_devices = parsed_devices[PCI_VGA_CLASS_ID] + parsed_devices.get(
-            PCI_AUDIO_CLASS_ID, []
-        )
-        nvidia_vid_pid_devices = []
-        for device in vfio_devices:
-            vid_pid_device = get_vid_pid_from_slot(device)
-            vid, pid = vid_pid_device.split(":")
-            # NVIDIA vendor ID is '10DE'
-            if vid.lower() != "10de":
-                continue
-            nvidia_vid_pid_devices.append(vid_pid_device)
-
-        vfio = ",".join(nvidia_vid_pid_devices)
-
-        gpu_list.append(
-            {
-                "description": get_pci_full_string_description_from_slot(gpu_vga_slot),
-                "vfio": vfio,
-                "slot": gpu_vga_slot,
-                "devices": vfio_devices,
-            }
-        )
-
-    return gpu_list, bad_isolation_groups
+    return gpus, bad_isolation_groups
 
 
 def get_current_partition():
@@ -391,14 +444,17 @@ def preset_exists(runtime_id):
     return provider_entry_exists("preset", runtime_id)
 
 
-def configure_runtime(runtime_path, selected_gpu):
+def configure_runtime(runtime_path, selected_gpus):
     runtime_content = json.loads(runtime_path.read_text())
-    runtime_gpu_arg = f"--runtime-arg=--pci-device={selected_gpu['slot']}"
+
+    runtime_gpu_args = [f"--runtime-arg=--pci-device={gpu['slot']}" for gpu in selected_gpus]
+
     runtime_content[0].setdefault("extra-args", [])
-    if runtime_gpu_arg not in runtime_content[0]["extra-args"]:
-        runtime_content[0]["extra-args"].append(
-            f"--runtime-arg=--pci-device={selected_gpu['slot']}"
-        )
+    runtime_content[0]["extra-args"] += runtime_gpu_args
+
+    # Ensure there is no duplicate args
+    runtime_content[0]["extra-args"] = list(set(runtime_content[0]["extra-args"]))
+
     runtime_path.write_text(json.dumps(runtime_content, indent=4))
 
 
@@ -457,27 +513,37 @@ def configure_preset(runtime_id, account, duration_price, cpu_price, node_name=N
     subprocess.run(activate_cmd, check=True, env=env)
 
 
-def bind_vfio(devices):
-    inner_cmd = []
-    for dev in devices:
-        driver_override_path = f"/sys/bus/pci/devices/{dev}/driver_override"
+def bind_vfio(slots):
+    cmds = []
+    for slot in set(slots):
+        driver_override_path = f"/sys/bus/pci/devices/{slot}/driver_override"
         bind_path = "/sys/bus/pci/drivers/vfio-pci/bind"
-        if Path(f"/sys/bus/pci/drivers/vfio-pci/{dev}").exists():
+
+        if Path(f"/sys/bus/pci/drivers/vfio-pci/{slot}").exists():
             continue
-        inner_cmd += [
+
+        driver = Path(f"/sys/bus/pci/devices/{slot}/driver").resolve()
+        if driver.exists():
+            cmds += [f'echo "{slot}" > {driver}/unbind']
+
+        cmds += [
             f'echo vfio-pci > "{driver_override_path}"',
-            f'echo "{dev}" > "{bind_path}"',
+            f'echo "{slot}" > "{bind_path}"',
         ]
     if Path("/sys/class/vtconsole/vtcon0/bind").exists():
-        inner_cmd += ["echo 0 > /sys/class/vtconsole/vtcon0/bind"]
+        cmds += ["echo 0 > /sys/class/vtconsole/vtcon0/bind"]
     if Path("/sys/class/vtconsole/vtcon1/bind").exists():
-        inner_cmd += ["echo 0 > /sys/class/vtconsole/vtcon1/bind"]
+        cmds += ["echo 0 > /sys/class/vtconsole/vtcon1/bind"]
     if Path("/sys/bus/platform/drivers/efi-framebuffer/efi-framebuffer.0").exists():
-        inner_cmd += [
+        cmds += [
             "echo efi-framebuffer.0 > /sys/bus/platform/drivers/efi-framebuffer/unbind"
         ]
-    inner_cmd += ["modprobe -i vfio-pci"]
-    subprocess.run(["sudo", "bash", "-c", "&&".join(inner_cmd)], check=True)
+    cmds += ["modprobe -i vfio-pci"]
+    for cmd in cmds:
+        logger.debug(f"Running '{cmd}'")
+        subprocess.run(
+            ["sudo", "bash", "-c", cmd], capture_output=True, text=True, check=True
+        )
 
 
 class WizardDialog:
@@ -546,6 +612,16 @@ class WizardDialog:
         return cls.dialog.menu(text, **default)
 
     @classmethod
+    def checklist(cls, text, **info):
+        default = {"colors": True, "width": 72, "height": 8}
+        default.update(info)
+
+        if not default["height"]:
+            default["height"] = cls._auto_height(default["width"], default["text"])
+
+        return cls.dialog.checklist(text, **default)
+
+    @classmethod
     def pause(cls, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
@@ -566,6 +642,12 @@ def parse_args():
         help="Don't allow PCI bridge on which the GPU is connected in the same IOMMU group.",
     )
     parser.add_argument(
+        "--insecure",
+        action="store_true",
+        default=False,
+        help="Ignore non-isolated IOMMU groups.",
+    )
+    parser.add_argument(
         "--storage-only",
         action="store_true",
         default=False,
@@ -577,17 +659,6 @@ def parse_args():
         "--glm-per-hour", default=None, help="Recommended default value is 0.25."
     )
     parser.add_argument("--init-price", default=None, help="For testing set it to 0.")
-    parser.add_argument(
-        "--gpu-pci-slot",
-        default=None,
-        help="GPU PCI slot ID. For example, '0000:01:00.1'.",
-    )
-    parser.add_argument(
-        "--vfio-devices",
-        default=[],
-        action="append",
-        help="List of PCI slot IDs to assign to VFIO.",
-    )
     parser.add_argument(
         "--no-passthrough",
         action="store_true",
@@ -808,45 +879,46 @@ def main(args, wizard_conf, wizard_dialog):
         "https://glm.zone/GPUProviderStats or log in using SSH."
     )
 
-    logging.info("Configure GPU.")
-    if not wizard_conf.get("gpu", None):
-        gpu_list, bad_isolation_groups = select_gpu_compatible(
-            allow_pci_bridge=not args.no_relax_gpu_isolation
+    logging.info("Configure GPUs.")
+    if not wizard_conf.get("gpus", None):
+        gpus, bad_isolation_groups = select_compatible_gpus(
+            allow_pci_bridge=not args.no_relax_gpu_isolation, insecure=args.insecure
         )
-        if not gpu_list:
-            if bad_isolation_groups:
-                for iommu_group in bad_isolation_groups:
-                    devices = bad_isolation_groups.get(iommu_group, [])
-                    if devices:
-                        msg = f"IOMMU Group '{iommu_group}' has bad isolation:\n\n"
-                        for device in devices:
-                            msg += "  " + device + "\n"
-                        wizard_dialog.msgbox(msg, width=640)
-
+        if bad_isolation_groups:
+            for device, iommu_group_devices in bad_isolation_groups:
+                msg = f"Cannot select '{device.description}'\n\nIOMMU Group '{device.iommu_group}' has bad isolation:\n\n"
+                for iommu_device in iommu_group_devices:
+                    msg += f"  - {iommu_device.slot} {iommu_device.description}\n"
+                wizard_dialog.msgbox(msg, width=640, height=32)
+        if not gpus:
             raise WizardError("No compatible GPU available.")
 
-        gpu_choices = [(gpu["description"], "") for gpu in gpu_list]
-        code, gpu_tag = wizard_dialog.menu(
-            "Select a GPU:", choices=gpu_choices, height=32
+        gpu_choices = [(slot, gpu["description"], False) for slot, gpu in gpus.items()]
+        code, gpu_tags = wizard_dialog.checklist(
+            "Select at least one GPU:", choices=gpu_choices, width=128, height=32
         )
 
-        selected_gpu = None
-        for gpu in gpu_list:
-            if gpu["description"] == gpu_tag:
-                selected_gpu = gpu
-                break
+        selected_gpus = []
+        for gpu_tag in gpu_tags:
+            selected_gpus.append(gpus[gpu_tag])
 
-        if selected_gpu:
-            wizard_dialog.msgbox(f"Selected GPU: {selected_gpu['description']}")
+        # sort GPUs by slot
+        selected_gpus = sorted(selected_gpus, key=lambda x: x["slot"])
 
-        if not code or not selected_gpu:
+        if selected_gpus:
+            msg = f"Selected GPUs:\n\n"
+            for gpu in selected_gpus:
+                msg += f"  - {gpu['slot']} {gpu['description']}\n"
+            wizard_dialog.msgbox(msg, width=640, height=32)
+
+        if not code or not selected_gpus:
             raise WizardError("Invalid GPU selection.")
 
-        wizard_conf["gpu"] = selected_gpu
+        wizard_conf["gpus"] = selected_gpus
 
         wizard_dialog.msgbox(msg_freeze)
     else:
-        selected_gpu = wizard_conf["gpu"]
+        selected_gpus = wizard_conf["gpus"]
 
     #
     # CONFIGURE RUNTIME
@@ -875,7 +947,7 @@ def main(args, wizard_conf, wizard_dialog):
                 f"Cannot find runtime configuration file '{runtime_path}'."
             )
 
-        configure_runtime(runtime_path, selected_gpu)
+        configure_runtime(runtime_path, selected_gpus)
 
         #
         # FIX SUPERVISOR AND RUNTIME PATHS
@@ -923,7 +995,10 @@ def main(args, wizard_conf, wizard_dialog):
     logging.info("Configure passthrough.")
     if not args.no_passthrough:
         try:
-            bind_vfio(selected_gpu["devices"])
+            all_devices = []
+            for gpu in selected_gpus:
+                all_devices += gpu["vfio_devices"]
+            bind_vfio(all_devices)
         except subprocess.CalledProcessError as e:
             raise WizardError(
                 f"Failed to attach devices to VFIO: {str(e)}. Already bound?"
@@ -944,7 +1019,7 @@ def main(args, wizard_conf, wizard_dialog):
         # Save Wizard configuration
         try:
             wizard_conf_path.write_text(tomli_w.dumps(wizard_conf))
-        except toml.TOMLDecodeError as e:
+        except toml.TomlDecodeError as e:
             raise WizardError(f"Failed to save configuration file: {str(e)}")
 
         # Once Wizard configuration written, we delete the first boot configuration
@@ -984,7 +1059,7 @@ if __name__ == "__main__":
                 conf_to_load = firstboot_wizard_conf_path
             if conf_to_load:
                 wizard_conf.update(toml.loads(conf_to_load.read_text()))
-        except toml.TOMLDecodeError as e:
+        except toml.TomlDecodeError as e:
             logger.error(
                 f"Failed to read configuration file '{wizard_conf_path}': {str(e)}"
             )
@@ -998,18 +1073,6 @@ if __name__ == "__main__":
         if args.glm_per_hour:
             wizard_conf["glm_per_hour"] = args.storage_partition
 
-        if args.gpu_pci_slot and args.vfio_devices:
-            wizard_conf["gpu"] = {
-                "slot": args.gpu_pci_slot,
-                "devices": args.vfio_devices,
-                "vfio": ",".join(
-                    get_vid_pid_from_slot(dev) for dev in args.vfio_devices
-                ),
-                "description": get_pci_full_string_description_from_slot(
-                    args.gpu_pci_slot
-                ),
-            }
-
         system_configured = all(
             [
                 wizard_conf.get("accepted_terms", False),
@@ -1017,7 +1080,7 @@ if __name__ == "__main__":
                 wizard_conf.get("storage_partition", None),
                 wizard_conf.get("glm_account", None),
                 wizard_conf.get("glm_per_hour", None),
-                wizard_conf.get("gpu", None),
+                wizard_conf.get("gpus", None),
             ]
         )
         wizard_dialog = WizardDialog(show_welcome=not system_configured)
