@@ -19,7 +19,7 @@ on:
 env:
   VERSION: v0.15.0-${{ github.run_number }}
 
-  yagna_tag: v0.15.0
+  yagna_tag: ^v*
   ya-runtime-wasi_tag: pre-rel-v0.2.4
   ya-installer-resources_tag: ^v.*
   ya-runtime-vm_tag: ^pre-rel-v0.4.0-ITL-.*
