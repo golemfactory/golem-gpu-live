@@ -22,8 +22,8 @@ env:
   yagna_tag: ^v*
   ya-runtime-wasi_tag: pre-rel-v0.2.4
   ya-installer-resources_tag: ^v.*
-  ya-runtime-vm_tag: ^pre-rel-v0.4.0-ITL-.*
-  ya-runtime-vm-nvidia_tag: ^pre-rel-v0.1.3-.*
+  ya-runtime-vm_tag: ^v0.4.*
+  ya-runtime-vm-nvidia_tag: ^v.*
   golem-nvidia-kernel_tag: ^v.*
 
   apt-sub-repo: apt-repo
