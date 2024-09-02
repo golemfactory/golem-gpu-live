@@ -17,7 +17,7 @@ on:
           - testing
           - unstable
 env:
-  VERSION: v0.15.0-${{ github.run_number }}
+  VERSION: v0.16.0-${{ github.run_number }}
 
   yagna_tag: ^v*
   ya-runtime-wasi_tag: pre-rel-v0.2.4
