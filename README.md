@@ -123,6 +123,7 @@ options:
   --debug
   --no-relax-gpu-isolation
                         Don't allow PCI bridge on which the GPU is connected in the same IOMMU group.
+  --insecure            Ignore non-isolated IOMMU groups.
   --storage-only        Configure only persistent storage.
   --glm-account GLM_ACCOUNT
                         Account for payments.
@@ -130,10 +131,6 @@ options:
                         Recommended default value is 0.25.
   --init-price INIT_PRICE
                         For testing set it to 0.
-  --gpu-pci-slot GPU_PCI_SLOT
-                        GPU PCI slot ID. For example, '0000:01:00.1'.
-  --vfio-devices VFIO_DEVICES
-                        List of PCI slot IDs to assign to VFIO.
   --no-passthrough      Don't attach devices to VFIO.
   --no-save             Don't save running configuration.
 ```

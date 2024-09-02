@@ -4,6 +4,7 @@ Before=getty@tty6.service
 ConditionKernelCommandLine=!skip_autostart
 
 [Service]
+ExecStartPre=+/usr/bin/dmesg -D
 ExecStart=/usr/local/bin/golemwz-wrapper
 Type=oneshot
 StandardInput=tty
