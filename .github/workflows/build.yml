@@ -17,12 +17,12 @@ on:
           - testing
           - unstable
 env:
-  VERSION: v0.16.0-${{ github.run_number }}
+  VERSION: v0.16.1-${{ github.run_number }}
 
-  yagna_tag: ^v*
+  yagna_tag: ^pre-rel-v0.16.1-rc4*
   ya-runtime-wasi_tag: pre-rel-v0.2.4
   ya-installer-resources_tag: ^v.*
-  ya-runtime-vm_tag: ^v0.4.*
+  ya-runtime-vm_tag: ^v0.5.*
   ya-runtime-vm-nvidia_tag: ^v.*
   golem-nvidia-kernel_tag: ^v.*
 
@@ -49,7 +49,7 @@ jobs:
         with:
           repo: yagna
           pattern: ${{ env.yagna_tag }}
-          prerelease: false
+          prerelease: true
       - name: "Get deb package: ya-runtime-wasi"
         uses: ./.github/actions/fetch-release-deb
         with:
