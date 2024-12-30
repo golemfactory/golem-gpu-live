@@ -1,3 +1,4 @@
+.PHONY: all clean
 
 LOCAL_DIR ?= $(shell readlink -m $(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 WORK_DIR ?= $(LOCAL_DIR)/work
