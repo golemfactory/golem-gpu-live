@@ -25,7 +25,7 @@ runs:
   steps:
     - name: "Get release"
       id: get_release
-      uses: cardinalby/git-get-release-action@v1.2.4
+      uses: cardinalby/git-get-release-action@1.2.4
       with:
         repo: ${{ inputs.owner }}/${{ inputs.repo }}
         releaseNameRegEx: ${{ inputs.pattern }}
