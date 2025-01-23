@@ -124,7 +124,7 @@ jobs:
       - name: Deploy to GitHub Pages
         if: env.DIST_TYPE == 'release'
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
 
   build:
     name: Building Image ${{ github.ref }}
