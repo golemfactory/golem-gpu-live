@@ -116,7 +116,7 @@ jobs:
           aws s3 sync "${{ env.DIST_TYPE }}/" "s3://repo-golem-gpu-live/${{ env.DIST_TYPE }}/"
 
       - name: Upload repository artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         if: env.DIST_TYPE == 'release'
         with:
           path: ${{ env.apt-sub-repo }}/${{ env.DIST_TYPE }}
