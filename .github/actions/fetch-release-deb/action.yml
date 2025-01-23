@@ -32,6 +32,7 @@ runs:
         latest: true
         pattern: ${{ inputs.pattern }}
         prerelease: ${{ inputs.prerelease }}
+        debug: true
     - name: "Fetch deb package: yagna"
       uses: robinraju/release-downloader@v1.10
       with:
