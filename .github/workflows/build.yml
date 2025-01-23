@@ -49,7 +49,7 @@ jobs:
         with:
           repo: yagna
           pattern: ${{ env.yagna_tag }}
-          prerelease: false
+          prerelease: true
       - name: "Get deb package: ya-runtime-wasi"
         uses: ./.github/actions/fetch-release-deb
         with:
