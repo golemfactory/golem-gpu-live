@@ -25,14 +25,11 @@ runs:
   steps:
     - name: "Get release"
       id: get_release
-      uses: joutvhu/get-release@v1
+      uses: cardinalby/git-get-release-action@v1
       with:
-        owner: ${{ inputs.owner }}
         repo: ${{ inputs.repo }}
-        latest: true
-        pattern: ${{ inputs.pattern }}
+        releaseNameRegEx: ${{ inputs.pattern }}
         prerelease: ${{ inputs.prerelease }}
-        debug: true
     - name: "Fetch deb package: yagna"
       uses: robinraju/release-downloader@v1.10
       with:
