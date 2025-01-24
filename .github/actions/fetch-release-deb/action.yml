@@ -16,21 +16,23 @@ inputs:
     required: false
     default: packages
   prerelease:
-    description: "Should look for prelease"
+    description: "Should look for prelease or full release only"
     required: false
-    default: false
+    # If not specified both prerelease and full release are considered
 
 runs:
   using: composite
   steps:
     - name: "Get release"
       id: get_release
-      uses: joutvhu/get-release@v1
+      # Previously used joutvhu/get-release action, but it doesn't handle pagination
+      # when querying releases. This is workaround and has its downsides.
+      uses: cardinalby/git-get-release-action@1.2.4
       with:
-        owner: ${{ inputs.owner }}
-        repo: ${{ inputs.repo }}
-        latest: true
-        pattern: ${{ inputs.pattern }}
+        repo: ${{ inputs.owner }}/${{ inputs.repo }}
+        # Checks release name not a tag, but tag doesn't support regex.
+        # It introduces the assumption that tag is part of the name!
+        releaseNameRegEx: ${{ inputs.pattern }}
         prerelease: ${{ inputs.prerelease }}
     - name: "Fetch deb package: yagna"
       uses: robinraju/release-downloader@v1.10

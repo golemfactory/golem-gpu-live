@@ -19,7 +19,7 @@ on:
 env:
   VERSION: v0.16.0-${{ github.run_number }}
 
-  yagna_tag: ^v0.16.0
+  yagna_tag: ^v.*
   ya-runtime-wasi_tag: pre-rel-v0.2.4
   ya-installer-resources_tag: ^v.*
   ya-runtime-vm_tag: ^v0.4.*
@@ -49,27 +49,23 @@ jobs:
         with:
           repo: yagna
           pattern: ${{ env.yagna_tag }}
-          prerelease: true
       - name: "Get deb package: ya-runtime-wasi"
         uses: ./.github/actions/fetch-release-deb
         with:
           repo: ya-runtime-wasi
           pattern: ${{ env.ya-runtime-wasi_tag }}
-          prerelease: true
 
       - name: "Get deb package: ya-installer-resources"
         uses: ./.github/actions/fetch-release-deb
         with:
           repo: ya-installer-resources
           pattern: ${{ env.ya-installer-resources_tag }}
-          prerelease: true
 
       - name: "Get deb package: ya-runtime-vm"
         uses: ./.github/actions/fetch-release-deb
         with:
           repo: ya-runtime-vm
           pattern: ${{ env.ya-runtime-vm_tag }}
-          prerelease: true
 
       - name: "Get deb package: ya-runtime-vm-nvidia"
         uses: ./.github/actions/fetch-release-deb
@@ -77,7 +73,6 @@ jobs:
           owner: golemfactory
           repo: ya-runtime-vm-nvidia
           pattern: ${{ env.ya-runtime-vm-nvidia_tag }}
-          prerelease: true
 
       - name: "Get deb package: golem-nvidia-kernel"
         uses: ./.github/actions/fetch-release-deb
@@ -85,7 +80,6 @@ jobs:
           owner: golemfactory
           repo: golem-nvidia-kernel
           pattern: ${{ env.golem-nvidia-kernel_tag }}
-          prerelease: true
 
       - name: Import GPG key
         id: gpg_key
@@ -116,7 +110,7 @@ jobs:
           aws s3 sync "${{ env.DIST_TYPE }}/" "s3://repo-golem-gpu-live/${{ env.DIST_TYPE }}/"
 
       - name: Upload repository artifact
-        uses: actions/upload-pages-artifact@v2
+        uses: actions/upload-pages-artifact@v3
         if: env.DIST_TYPE == 'release'
         with:
           path: ${{ env.apt-sub-repo }}/${{ env.DIST_TYPE }}
@@ -124,7 +118,7 @@ jobs:
       - name: Deploy to GitHub Pages
         if: env.DIST_TYPE == 'release'
         id: deployment
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@v4
 
   build:
     name: Building Image ${{ github.ref }}
