@@ -18,17 +18,21 @@ inputs:
   prerelease:
     description: "Should look for prelease"
     required: false
-    default: false
+    #default: false
 
 runs:
   using: composite
   steps:
     - name: "Get release"
       id: get_release
+      # Previously used joutvhu/get-release action, but it doesn't handle pagination
+      # when querying releases. This is workaround and has its downsides.
       uses: cardinalby/git-get-release-action@1.2.4
       with:
         repo: ${{ inputs.owner }}/${{ inputs.repo }}
-        tag: ${{ inputs.pattern }}
+        # Checks release name not a tag, but tag doesn't support regex.
+        # It introduces the assumption that tag is part of the name!
+        releaseNameRegEx: ${{ inputs.pattern }}
         prerelease: ${{ inputs.prerelease }}
     - name: "Fetch deb package: yagna"
       uses: robinraju/release-downloader@v1.10
