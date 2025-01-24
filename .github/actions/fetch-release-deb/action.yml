@@ -16,9 +16,9 @@ inputs:
     required: false
     default: packages
   prerelease:
-    description: "Should look for prelease"
+    description: "Should look for prelease or full release only"
     required: false
-    #default: false
+    # If not specified both prerelease and full release are considered
 
 runs:
   using: composite
