@@ -77,7 +77,7 @@ jobs:
           owner: golemfactory
           repo: ya-runtime-vm-nvidia
           pattern: ${{ env.ya-runtime-vm-nvidia_tag }}
-          prerelease: true
+          #prerelease: true
 
       - name: "Get deb package: golem-nvidia-kernel"
         uses: ./.github/actions/fetch-release-deb
