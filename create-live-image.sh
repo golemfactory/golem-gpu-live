@@ -94,6 +94,13 @@ cp "${WORKDIR}/rootfs/usr/lib/shim/shimx64.efi.signed.latest" \
 mkdir -p "${MNTDIR}/.disk"
 echo "Golem Live USB" > "${MNTDIR}/.disk/info"
 
+# Generate BIOS bootable GRUB image
+grub-install \
+    --target=i386-pc \
+    --root-directory="${MNTDIR}" \
+    --modules="part_gpt part_msdos fat iso9660" \
+    "${IMG_LOOP}"
+
 # Umount root filesystem
 umount "${MNTDIR}/boot/efi"
 umount "${MNTDIR}"
@@ -106,8 +113,3 @@ cat > "${MNTDIR}/golemwz-example.toml" << EOF
 #glm_per_hour = "0.25"
 EOF
 
-# Generate BIOS bootable GRUB image
-grub-install \
-    --target=i386-pc \
-    --modules="part_gpt part_msdos fat iso9660" \
-    "${IMG_LOOP}"
