@@ -17,13 +17,13 @@ on:
           - testing
           - unstable
 env:
-  VERSION: v0.16.0-${{ github.run_number }}
+  VERSION: v0.17.0-${{ github.run_number }}
 
   yagna_tag: ^v.*
   ya-runtime-wasi_tag: pre-rel-v0.2.4
   ya-installer-resources_tag: ^v.*
   ya-runtime-vm_tag: ^v0.4.*
-  ya-runtime-vm-nvidia_tag: ^v.*
+  ya-runtime-vm-nvidia_tag: ^v0.1.4
   golem-nvidia-kernel_tag: ^v.*
 
   apt-sub-repo: apt-repo
