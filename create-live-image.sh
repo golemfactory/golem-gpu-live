@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -eux -o pipefail
 
@@ -33,7 +33,7 @@ trap "cleanup ${MNTDIR}" 0 1 2 3 6 15
 truncate -s 16G "${IMG}"
 
 # have static UUIDs to make partition table reproducible
-/usr/sbin/sfdisk "$IMG" <<EOF || exit 1
+sfdisk "$IMG" <<EOF || exit 1
 label: gpt
 label-id: f4796a2a-e377-45bd-b539-d6d49e569055
 
@@ -44,7 +44,7 @@ size=10000MiB, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=693244e6-3e07-47b
 type=0FC63DAF-8483-4772-8E79-3D69D8477DE4, uuid=9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01, name="Golem storage"
 EOF
 
-IMG_LOOP=$(/sbin/losetup -P -f --show "$IMG")
+IMG_LOOP=$(losetup -P -f --show "$IMG")
 EFI_IMG_DEV=${IMG_LOOP}p1
 BIOS_IMG_DEV=${IMG_LOOP}p2
 CONF_DEV=${IMG_LOOP}p3
@@ -54,10 +54,10 @@ STORAGE_DEV=${IMG_LOOP}p5
 udevadm settle --exit-if-exists="$IMG_DEV"
 
 # Creating filesystems
-/sbin/mkfs.vfat "${EFI_IMG_DEV}"
-/sbin/mkfs.fat -F32 "${CONF_DEV}"
-/sbin/mkfs.ext4 -U 90a495f3-c8ce-45c6-97ac-3bd5edf3aebd -q -F "${IMG_DEV}"
-/sbin/mkfs.ext4 -q -F "${STORAGE_DEV}"
+mkfs.vfat "${EFI_IMG_DEV}"
+mkfs.fat -F32 "${CONF_DEV}"
+mkfs.ext4 -U 90a495f3-c8ce-45c6-97ac-3bd5edf3aebd -q -F "${IMG_DEV}"
+mkfs.ext4 -q -F "${STORAGE_DEV}"
 
 mkdir -p "${MNTDIR}"
 mount "${IMG_DEV}" "${MNTDIR}"
@@ -94,6 +94,13 @@ cp "${WORKDIR}/rootfs/usr/lib/shim/shimx64.efi.signed.latest" \
 mkdir -p "${MNTDIR}/.disk"
 echo "Golem Live USB" > "${MNTDIR}/.disk/info"
 
+# Generate BIOS bootable GRUB image
+grub-install \
+    --target=i386-pc \
+    --root-directory="${MNTDIR}" \
+    --modules="part_gpt part_msdos fat iso9660" \
+    "${IMG_LOOP}"
+
 # Umount root filesystem
 umount "${MNTDIR}/boot/efi"
 umount "${MNTDIR}"
@@ -106,8 +113,3 @@ cat > "${MNTDIR}/golemwz-example.toml" << EOF
 #glm_per_hour = "0.25"
 EOF
 
-# Generate BIOS bootable GRUB image
-grub-install \
-    --target=i386-pc \
-    --modules="part_gpt part_msdos fat iso9660" \
-    "${IMG_LOOP}"

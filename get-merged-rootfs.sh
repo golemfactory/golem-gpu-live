@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Command-line tool that simplifies the process of extracting Docker images
 # and their root filesystem layers. It saves provided image to a tarball and then
