@@ -100,10 +100,19 @@ umount "${MNTDIR}"
 
 # Mount conf filesystem
 mount "${CONF_DEV}" "${MNTDIR}"
+
+# Copy the actual golemwz.toml configuration file if it exists
+if [ -f "${WORKDIR}/rootfs/golemwz.toml" ]; then
+    cp "${WORKDIR}/rootfs/golemwz.toml" "${MNTDIR}/"
+fi
+
 cat > "${MNTDIR}/golemwz-example.toml" << EOF
 #accepted_terms = true
 #glm_account = "0x..."
 #glm_per_hour = "0.25"
+#non_interactive_install = true
+#ssh_keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeI8LZGexCdqXozb+gPKnZCQLr7AlXqRCgJpM9eS/y3 user@host"]
+#configuration_server = ""
 EOF
 
 # Generate BIOS bootable GRUB image

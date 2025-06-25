@@ -1,0 +1,7 @@
+accepted_terms = true
+glm_account = "0x206bfe4F439a83b65A5B9c2C3B1cc6cB49054cc4"
+glm_per_hour = "0.25"
+# glm_node_name = "my-gpu-provider"  # Optional: leave commented for auto-generated name
+non_interactive_install = true
+ssh_keys = ["ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPeI8LZGexCdqXozb+gPKnZCQLr7AlXqRCgJpM9eS/y3 reqc@pop-os"]
+configuration_server = ""

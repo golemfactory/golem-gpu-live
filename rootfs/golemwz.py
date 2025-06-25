@@ -90,6 +90,23 @@ def parse_args():
         default=False,
         help="Don't save running configuration.",
     )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        default=False,
+        help="Run in non-interactive mode using configuration file values.",
+    )
+    parser.add_argument(
+        "--ssh-keys",
+        nargs="*",
+        default=[],
+        help="SSH public keys to install for remote access.",
+    )
+    parser.add_argument(
+        "--configuration-server",
+        default="",
+        help="URL to fetch additional configuration from.",
+    )
     return parser.parse_args()
 
 
@@ -653,6 +670,53 @@ def bind_vfio(slots):
         )
 
 
+def install_ssh_keys(ssh_keys):
+    """Install SSH public keys for the golem user."""
+    if not ssh_keys:
+        return
+
+    ssh_dir = Path.home() / ".ssh"
+    ssh_dir.mkdir(mode=0o700, exist_ok=True)
+
+    authorized_keys_path = ssh_dir / "authorized_keys"
+
+    # Read existing keys if file exists
+    existing_keys = set()
+    if authorized_keys_path.exists():
+        existing_keys = set(authorized_keys_path.read_text().strip().split('\n'))
+        existing_keys.discard('')  # Remove empty strings
+
+    # Add new keys
+    new_keys = set(ssh_keys)
+    all_keys = existing_keys | new_keys
+
+    # Write all keys to file
+    authorized_keys_path.write_text('\n'.join(sorted(all_keys)) + '\n')
+    authorized_keys_path.chmod(0o600)
+
+    logger.info(f"Installed {len(new_keys)} SSH keys")
+
+
+def fetch_configuration_from_server(server_url):
+    """Fetch additional configuration from remote server."""
+    if not server_url:
+        return {}
+
+    try:
+        import urllib.request
+        import urllib.error
+
+        logger.info(f"Fetching configuration from {server_url}")
+
+        with urllib.request.urlopen(server_url, timeout=30) as response:
+            config_data = response.read().decode('utf-8')
+            return toml.loads(config_data)
+
+    except (urllib.error.URLError, toml.TomlDecodeError) as e:
+        logger.error(f"Failed to fetch configuration from server: {e}")
+        return {}
+
+
 class WizardDialog:
     dialog = Dialog(dialog="dialog", pass_args_via_file=False)
 
@@ -663,15 +727,17 @@ class WizardDialog:
         show_welcome: bool = False,
         storage_only: bool = False,
         no_save: bool = False,
+        non_interactive: bool = False,
     ):
         cls.wizard_conf = wizard_conf
 
         cls.dialog.set_background_title("GOLEM Provider Wizard")
-        if show_welcome:
+        if show_welcome and not non_interactive:
             cls.msgbox("Welcome to GOLEM Provider configuration wizard!")
 
         cls.storage_only = storage_only
         cls.no_save = no_save
+        cls.non_interactive = non_interactive
 
         cls.device = None
         cls.glm_account = None
@@ -768,6 +834,9 @@ class WizardDialog:
     def wizard_check_terms(self):
         logging.info("Check accepted license terms.")
         if not self.wizard_conf.get("accepted_terms", False):
+            if self.non_interactive:
+                raise WizardError("Terms must be accepted in configuration file for non-interactive mode")
+
             if not self.yesno(
                 "By installing & running this software you declare that you have read, understood and hereby accept the "
                 "disclaimer and privacy warning found at 'https://glm.zone/GPUProviderTC'."
@@ -802,30 +871,47 @@ class WizardDialog:
                 begin_choices = [not_configure]
                 info = devices.values()
 
-            partition_choices = (
-                begin_choices
-                + [
-                    (dev["DEVNAME"], get_partition_description(dev))
-                    for dev in info
-                ]
-                + end_choices
-            )
-
-            code, partition_tag = self.menu(
-                "Select a storage partition:",
-                choices=partition_choices,
-                height=64,
-                width=128,
-            )
-
-            if not partition_tag or partition_tag == "-":
-                if not self.yesno(
-                    "No persistent storage defined. Would you like to continue?"
-                ):
-                    return
-                self.device = {"DEVNAME": "/dev/notset"}
+            if self.non_interactive:
+                # In non-interactive mode, automatically select Golem storage partition
+                if default_partition:
+                    partition_tag = default_partition
+                    self.device = devices[partition_tag]
+                    logger.info(f"Automatically selected Golem storage partition: {partition_tag}")
+                else:
+                    # If no Golem storage found, try to use the first available partition
+                    if devices:
+                        partition_tag = list(devices.keys())[0]
+                        self.device = devices[partition_tag]
+                        logger.info(f"No Golem storage found, using first available partition: {partition_tag}")
+                    else:
+                        # No storage devices available
+                        raise WizardError("No storage partitions available for non-interactive mode")
             else:
-                self.device = devices[partition_tag]
+                # Interactive mode - show menu
+                partition_choices = (
+                    begin_choices
+                    + [
+                        (dev["DEVNAME"], get_partition_description(dev))
+                        for dev in info
+                    ]
+                    + end_choices
+                )
+
+                code, partition_tag = self.menu(
+                    "Select a storage partition:",
+                    choices=partition_choices,
+                    height=64,
+                    width=128,
+                )
+
+                if not partition_tag or partition_tag == "-":
+                    if not self.yesno(
+                        "No persistent storage defined. Would you like to continue?"
+                    ):
+                        return
+                    self.device = {"DEVNAME": "/dev/notset"}
+                else:
+                    self.device = devices[partition_tag]
 
             self.wizard_conf["storage_partition"] = self.device
             resize_partition = True
@@ -864,43 +950,65 @@ class WizardDialog:
                     capture_output=True,
                     input=f"{password}\n{password}".encode(),
                 )
-                self.msgbox(
-                    f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
-                )
-
-                # Setup timeout for letting nm-online detecting activation
-                cur = 0
-                timeout = 30
-                self.dialog.gauge_start(
-                    "Progress: 0%", title="Waiting for network activation..."
-                )
-                process = subprocess.Popen(
-                    ["nm-online", "--timeout", str(timeout)],
-                    stdout=subprocess.DEVNULL,
-                )
-                while cur <= timeout:
-                    if process.poll() is not None:
-                        self.dialog.gauge_update(
-                            100, "Progress: 100%", update_text=True
-                        )
-                        break
-                    update = int(100 * cur / timeout)
-                    self.dialog.gauge_update(
-                        update,
-                        "Progress: {0}%".format(update),
-                        update_text=True,
+                if self.non_interactive:
+                    # In non-interactive mode, log the password instead of showing dialog
+                    logger.info(f"Generated random password for 'golem' user: {password}")
+                    logger.info("Password has been set for golem user (SSH key authentication recommended)")
+                else:
+                    self.msgbox(
+                        f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
                     )
-                    time.sleep(1)
-                    cur += 1
-                self.dialog.gauge_stop()
 
-                # We rely on nm-online saying it has found activated connections
-                if process.poll() == 0 and get_ip_addresses():
+                # Check network connectivity
+                if self.non_interactive:
+                    # In non-interactive mode, check network without progress display
+                    logger.info("Checking network connectivity...")
+                    process = subprocess.run(
+                        ["nm-online", "--timeout", "30"],
+                        capture_output=True,
+                        text=True
+                    )
+                else:
+                    # Interactive mode - show progress gauge
+                    cur = 0
+                    timeout = 30
+                    self.dialog.gauge_start(
+                        "Progress: 0%", title="Waiting for network activation..."
+                    )
+                    process = subprocess.Popen(
+                        ["nm-online", "--timeout", str(timeout)],
+                        stdout=subprocess.DEVNULL,
+                    )
+                    while cur <= timeout:
+                        if process.poll() is not None:
+                            self.dialog.gauge_update(
+                                100, "Progress: 100%", update_text=True
+                            )
+                            break
+                        update = int(100 * cur / timeout)
+                        self.dialog.gauge_update(
+                            update,
+                            "Progress: {0}%".format(update),
+                            update_text=True,
+                        )
+                        time.sleep(1)
+                        cur += 1
+                    self.dialog.gauge_stop()
+
+                # Report network status
+                if (process.returncode if hasattr(process, 'returncode') else process.poll()) == 0 and get_ip_addresses():
                     addresses_str = "\n- " + "\n- ".join(get_ip_addresses())
                     msg = f"Available IP addresses to connect to SSH for this host:{addresses_str}"
+                    if self.non_interactive:
+                        logger.info(f"Network connectivity established. {msg.replace(chr(10), ' ')}")
+                    else:
+                        self.msgbox(msg, height=8)
                 else:
                     msg = "Cannot determine available IP addresses. Please check documentation."
-                self.msgbox(msg, height=8)
+                    if self.non_interactive:
+                        logger.warning(msg)
+                    else:
+                        self.msgbox(msg, height=8)
                 self.wizard_conf["is_password_set"] = True
             except subprocess.CalledProcessError as e:
                 raise WizardError(f"Failed to set 'golem' password: {str(e)}.")
@@ -908,29 +1016,37 @@ class WizardDialog:
     def wizard_configure_glm(self):
         logging.info("Configure GLM values.")
         self.glm_account = self.wizard_conf.get("glm_account", None)
-        while not self.glm_account:
-            user_input = self.inputbox(
-                "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):",
-                width=96,
-            )
-            if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
-                self.glm_account = user_input
-                break
-            elif user_input and user_input == "/notset":
-                self.glm_account = "0xDaa04647e8ecb616801F9bE89712771F6D291a0C"
-                break
+
+        if self.non_interactive:
+            if not self.glm_account:
+                raise WizardError("glm_account must be provided in configuration file for non-interactive mode")
+        else:
+            while not self.glm_account:
+                user_input = self.inputbox(
+                    "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):",
+                    width=96,
+                )
+                if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
+                    self.glm_account = user_input
+                    break
+                elif user_input and user_input == "/notset":
+                    self.glm_account = "0xDaa04647e8ecb616801F9bE89712771F6D291a0C"
+                    break
+                else:
+                    self.msgbox(
+                        "Invalid account address provided. Please ensure account address contains 40 hexadecimal digits prefixed with '0x'."
+                    )
+
+        self.glm_per_hour = self.wizard_conf.get("glm_per_hour", None)
+        if not self.glm_per_hour:
+            if self.non_interactive:
+                self.glm_per_hour = DURATION_GLM_PER_HOUR_DEFAULT
             else:
-                self.msgbox(
-                    "Invalid account address provided. Please ensure account address contains 40 hexadecimal digits prefixed with '0x'."
+                self.glm_per_hour = (
+                    self.inputbox("GLM per hour:", init=str(DURATION_GLM_PER_HOUR_DEFAULT))
+                    or DURATION_GLM_PER_HOUR_DEFAULT
                 )
 
-        self.glm_per_hour = (
-            self.wizard_conf.get("glm_per_hour", None)
-            or self.inputbox(
-                "GLM per hour:", init=str(DURATION_GLM_PER_HOUR_DEFAULT)
-            )
-            or DURATION_GLM_PER_HOUR_DEFAULT
-        )
         try:
             self.duration_price = float(self.glm_per_hour) / 3600.0
         except ValueError as e:
@@ -946,48 +1062,69 @@ class WizardDialog:
                 allow_pci_bridge=not args.no_relax_gpu_isolation,
                 insecure=args.insecure,
             )
+
+            # Handle bad isolation groups
             if bad_isolation_groups:
                 for device, iommu_group_devices in bad_isolation_groups:
-                    msg = f"Cannot select '{device.description}'\n\nIOMMU Group '{device.iommu_group}' has bad isolation:\n\n"
+                    msg = f"Cannot select '{device.description}' - IOMMU Group '{device.iommu_group}' has bad isolation:"
                     for iommu_device in iommu_group_devices:
-                        msg += f"  - {iommu_device.slot} {iommu_device.description}\n"
-                    self.msgbox(msg, width=640, height=32)
+                        msg += f" {iommu_device.slot} {iommu_device.description};"
+                    if self.non_interactive:
+                        logger.warning(msg)
+                    else:
+                        self.msgbox(msg, width=640, height=32)
+
             if not gpus:
                 raise WizardError("No compatible GPU available.")
 
-            gpu_choices = [
-                (slot, gpu["description"], False) for slot, gpu in gpus.items()
-            ]
-
-            while not self.selected_gpus:
-                code, gpu_tags = self.checklist(
-                    "Select at least one GPU (use spacebar for selection):",
-                    choices=gpu_choices,
-                    width=128,
-                    height=32,
-                )
-
-                selected_gpus = []
-                for gpu_tag in gpu_tags:
-                    selected_gpus.append(gpus[gpu_tag])
-
-                # sort GPUs by slot
+            if self.non_interactive:
+                # In non-interactive mode, automatically select all compatible GPUs
+                selected_gpus = list(gpus.values())
                 selected_gpus = sorted(selected_gpus, key=lambda x: x["slot"])
+                self.selected_gpus = selected_gpus
 
-                if selected_gpus:
-                    msg = f"Do you confirm selected GPUs?\n\n"
-                    for gpu in selected_gpus:
-                        msg += f"  - {gpu['slot']} {gpu['description']}\n"
-                    if not self.yesno(msg, width=640, height=32):
-                        selected_gpus = None
+                # Log the automatically selected GPUs
+                logger.info("Automatically selected all compatible GPUs:")
+                for gpu in selected_gpus:
+                    logger.info(f"  - {gpu['slot']} {gpu['description']}")
 
-                if not code or not selected_gpus:
-                    self.msgbox("Please select at least one GPU. Use spacebar for selection.")
-                else:
-                    self.selected_gpus = selected_gpus
+                logger.info(MSG_FREEZE)
+            else:
+                # Interactive mode - show GPU selection dialog
+                gpu_choices = [
+                    (slot, gpu["description"], False) for slot, gpu in gpus.items()
+                ]
+
+                while not self.selected_gpus:
+                    code, gpu_tags = self.checklist(
+                        "Select at least one GPU (use spacebar for selection):",
+                        choices=gpu_choices,
+                        width=128,
+                        height=32,
+                    )
+
+                    selected_gpus = []
+                    for gpu_tag in gpu_tags:
+                        selected_gpus.append(gpus[gpu_tag])
+
+                    # sort GPUs by slot
+                    selected_gpus = sorted(selected_gpus, key=lambda x: x["slot"])
+
+                    if selected_gpus:
+                        msg = f"Do you confirm selected GPUs?\n\n"
+                        for gpu in selected_gpus:
+                            msg += f"  - {gpu['slot']} {gpu['description']}\n"
+                        if not self.yesno(msg, width=640, height=32):
+                            selected_gpus = None
+
+                    if not code or not selected_gpus:
+                        self.msgbox("Please select at least one GPU. Use spacebar for selection.")
+                    else:
+                        self.selected_gpus = selected_gpus
+
+                self.msgbox(MSG_FREEZE)
 
             self.wizard_conf["gpus"] = self.selected_gpus
-            self.msgbox(MSG_FREEZE)
         else:
             self.selected_gpus = self.wizard_conf["gpus"]
 
@@ -1037,11 +1174,21 @@ class WizardDialog:
     def wizard_configure_preset(self):
         logging.info("Configure preset.")
         if not self.wizard_conf.get("preset_configured", False):
-            glm_node_name = self.wizard_conf.get(
-                "glm_node_name", None
-            ) or self.inputbox(
-                "Node name (leave empty for automatic generated name):"
-            )
+            glm_node_name = self.wizard_conf.get("glm_node_name", None)
+
+            # Only prompt for node name in interactive mode if not already configured
+            if not glm_node_name and not self.non_interactive:
+                glm_node_name = self.inputbox(
+                    "Node name (leave empty for automatic generated name):"
+                )
+
+            # In non-interactive mode, use configured value or None (for auto-generated name)
+            if self.non_interactive:
+                if glm_node_name:
+                    logger.info(f"Using configured node name: {glm_node_name}")
+                else:
+                    logger.info("No node name configured, will use auto-generated name")
+
             try:
                 configure_preset(
                     runtime_id="vm-nvidia",
@@ -1168,7 +1315,22 @@ if __name__ == "__main__":
             wizard_conf["glm_account"] = args.glm_account
 
         if args.glm_per_hour:
-            wizard_conf["glm_per_hour"] = args.storage_partition
+            wizard_conf["glm_per_hour"] = args.glm_per_hour
+
+        # Process configuration from remote server if specified
+        if args.configuration_server or wizard_conf.get("configuration_server"):
+            server_url = args.configuration_server or wizard_conf.get("configuration_server")
+            remote_conf = fetch_configuration_from_server(server_url)
+            wizard_conf.update(remote_conf)
+
+        # Override with command line arguments for new options
+        if args.non_interactive or wizard_conf.get("non_interactive_install", False):
+            wizard_conf["non_interactive_install"] = True
+
+        if args.ssh_keys or wizard_conf.get("ssh_keys"):
+            ssh_keys = args.ssh_keys or wizard_conf.get("ssh_keys", [])
+            install_ssh_keys(ssh_keys)
+            logger.info("SSH keys installed")
 
         system_configured = all(
             [
@@ -1180,11 +1342,15 @@ if __name__ == "__main__":
                 wizard_conf.get("gpus", None),
             ]
         )
+
+        non_interactive_mode = wizard_conf.get("non_interactive_install", False)
+
         wizard_dialog = WizardDialog(
             wizard_conf=wizard_conf,
-            show_welcome=not system_configured,
+            show_welcome=not system_configured and not non_interactive_mode,
             storage_only=args.storage_only,
             no_save=args.no_save,
+            non_interactive=non_interactive_mode,
         )
         wizard_dialog.run()
     except KeyboardInterrupt:
