@@ -717,119 +717,141 @@ def fetch_configuration_from_server(server_url):
         return {}
 
 
-class WizardDialog:
-    dialog = Dialog(dialog="dialog", pass_args_via_file=False)
+def update_env_file(env_config):
+    """Updates /mnt/golem.env with variables from the [env] section."""
+    if not env_config or not isinstance(env_config, dict):
+        return
 
-    @classmethod
+    env_file_path = Path("/mnt/golem.env")
+    lines = []
+    for key, value in env_config.items():
+        # Ensure keys are uppercase, as is common for env vars
+        lines.append(f"{key.upper()}={value}")
+
+    content = "\n".join(lines)
+    logging.info(f"Updating environment file: {env_file_path}")
+    logging.info(f"New content:\n{content}")
+
+    try:
+        # This script is run with sudo, so it can write to /mnt
+        env_file_path.write_text(content + "\n")
+        logging.info(f"Successfully updated {env_file_path}")
+
+        # Restart the golemsp service to apply the new environment variables
+        logging.info("Restarting golemsp.service to apply environment changes.")
+        subprocess.run(["sudo", "systemctl", "restart", "golemsp.service"], check=True)
+
+    except (IOError, subprocess.CalledProcessError) as e:
+        raise WizardError(f"Failed to update env file or restart service: {e}")
+
+
+class WizardDialog:
+
     def __init__(
-        cls,
+        self,
         wizard_conf: dict,
+        args,
         show_welcome: bool = False,
         storage_only: bool = False,
         no_save: bool = False,
         non_interactive: bool = False,
     ):
-        cls.wizard_conf = wizard_conf
+        self.wizard_conf = wizard_conf
+        self.args = args
+        self.dialog = Dialog(dialog="dialog", pass_args_via_file=False)
 
-        cls.dialog.set_background_title("GOLEM Provider Wizard")
+        self.dialog.set_background_title("GOLEM Provider Wizard")
         if show_welcome and not non_interactive:
-            cls.msgbox("Welcome to GOLEM Provider configuration wizard!")
+            self.msgbox("Welcome to GOLEM Provider configuration wizard!")
 
-        cls.storage_only = storage_only
-        cls.no_save = no_save
-        cls.non_interactive = non_interactive
+        self.storage_only = storage_only
+        self.no_save = no_save
+        self.non_interactive = non_interactive
 
-        cls.device = None
-        cls.glm_account = None
-        cls.glm_per_hour = None
-        cls.duration_price = None
-        cls.selected_gpus = None
+        self.device = None
+        self.glm_account = None
+        self.glm_per_hour = None
+        self.duration_price = None
+        self.selected_gpus = None
 
-    @classmethod
-    def _auto_height(cls, width, text):
+    def _auto_height(self, width, text):
         _max = max(8, 5 + len(wrap(text, width=width)))  # Min of 8 rows
         _min = min(22, _max)  # Max of 22 rows
         return _min
 
-    @classmethod
-    def yesno(cls, text, **info):
+    def yesno(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
-        code = cls.dialog.yesno(text, **default)
+        code = self.dialog.yesno(text, **default)
 
-        if code == cls.dialog.OK:
+        if code == self.dialog.OK:
             return True
-        elif code == cls.dialog.CANCEL:
+        elif code == self.dialog.CANCEL:
             return False
-        elif code == cls.dialog.ESC:
+        elif code == self.dialog.ESC:
             sys.exit("Escape key pressed. Exiting.")
 
-    @classmethod
-    def inputbox(cls, text, **info):
+    def inputbox(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        code, input_content = cls.dialog.inputbox(text, **default)
-        if code == cls.dialog.OK:
+        code, input_content = self.dialog.inputbox(text, **default)
+        if code == self.dialog.OK:
             return input_content
-        elif code == cls.dialog.CANCEL:
+        elif code == self.dialog.CANCEL:
             return None
-        elif code == cls.dialog.ESC:
+        elif code == self.dialog.ESC:
             sys.exit("Escape key pressed. Exiting.")
 
-    @classmethod
-    def msgbox(cls, text, **info):
+    def msgbox(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.msgbox(text, **default)
+        return self.dialog.msgbox(text, **default)
 
-    @classmethod
-    def menu(cls, text, **info):
+    def menu(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.menu(text, **default)
+        return self.dialog.menu(text, **default)
 
-    @classmethod
-    def checklist(cls, text, **info):
+    def checklist(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.checklist(text, **default)
+        return self.dialog.checklist(text, **default)
 
-    @classmethod
-    def pause(cls, text, **info):
+    def pause(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.pause(text, **default)
+        return self.dialog.pause(text, **default)
 
     def wizard_check_terms(self):
         logging.info("Check accepted license terms.")
@@ -956,7 +978,7 @@ class WizardDialog:
                     logger.info("Password has been set for golem user (SSH key authentication recommended)")
                 else:
                     self.msgbox(
-                        f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
+                        f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\"
                     )
 
                 # Check network connectivity
@@ -1059,8 +1081,8 @@ class WizardDialog:
         logging.info("Configure GPUs.")
         if not self.wizard_conf.get("gpus", None):
             gpus, bad_isolation_groups = select_compatible_gpus(
-                allow_pci_bridge=not args.no_relax_gpu_isolation,
-                insecure=args.insecure,
+                allow_pci_bridge=not self.args.no_relax_gpu_isolation,
+                insecure=self.args.insecure,
             )
 
             # Handle bad isolation groups
@@ -1206,7 +1228,7 @@ class WizardDialog:
         logging.info(MSG_FREEZE)
 
         logging.info("Configure passthrough.")
-        if not args.no_passthrough:
+        if not self.args.no_passthrough:
             try:
                 all_devices = []
                 for gpu in self.selected_gpus:
@@ -1277,6 +1299,7 @@ class WizardDialog:
         self.wizard_save_config()
 
 
+
 if __name__ == "__main__":
     wizard_dialog = None
     err_msg = None
@@ -1321,6 +1344,11 @@ if __name__ == "__main__":
         if args.configuration_server or wizard_conf.get("configuration_server"):
             server_url = args.configuration_server or wizard_conf.get("configuration_server")
             remote_conf = fetch_configuration_from_server(server_url)
+            # Update the environment file if the [env] section exists
+            if "env" in remote_conf:
+                update_env_file(remote_conf["env"])
+                # Remove the env section so it doesn't pollute the main wizard_conf
+                del remote_conf["env"]
             wizard_conf.update(remote_conf)
 
         # Override with command line arguments for new options
@@ -1347,6 +1375,7 @@ if __name__ == "__main__":
 
         wizard_dialog = WizardDialog(
             wizard_conf=wizard_conf,
+            args=args,
             show_welcome=not system_configured and not non_interactive_mode,
             storage_only=args.storage_only,
             no_save=args.no_save,

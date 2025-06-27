@@ -114,6 +114,12 @@ RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.tar
 COPY golemsp.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants/
 
+# Copy GOLEM auto-updater and Systemd timer
+COPY golem-config-updater.py /usr/local/bin/golem-config-updater.py
+COPY golem-config-updater.service /etc/systemd/system
+COPY golem-config-updater.timer /etc/systemd/system
+RUN ln -s /etc/systemd/system/golem-config-updater.timer /etc/systemd/system/timers.target.wants/
+
 # Setup motd
 RUN bash -c "rm -rf /etc/update-motd.d/*"
 COPY 00-header /etc/update-motd.d/
