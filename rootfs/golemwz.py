@@ -459,7 +459,167 @@ def mount_conf_storage():
         raise WizardError(f"Failed to mount configuration partition: {str(e)}")
 
 
-def configure_storage(device, resize_partition):
+def resize_storage_partition(device):
+    """
+    Resize the Golem storage partition to use all available space.
+
+    Args:
+        device: Device info dict containing DEVNAME, PARTUUID, etc.
+
+    Returns:
+        bool: True if resize was successful or not needed, False on error
+    """
+    try:
+        # Check if this is the Golem storage partition
+        expected_partuuid = "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01"
+        actual_partuuid = device.get("PARTUUID", "").lower()
+
+        logger.info(f"Checking resize for device {device.get('DEVNAME')}")
+        logger.info(f"Expected PARTUUID: {expected_partuuid}")
+        logger.info(f"Actual PARTUUID: {actual_partuuid}")
+
+        if actual_partuuid != expected_partuuid.lower():
+            logger.info("Not the Golem storage partition, skipping resize")
+            return True
+
+        devname_path = Path(device["DEVNAME"])
+        if not devname_path.exists():
+            logger.error(f"Device path does not exist: {devname_path}")
+            return False
+
+        # Get the parent disk device (e.g., /dev/sdb5 -> sdb)
+        try:
+            parent_device = Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
+        except (OSError, FileNotFoundError) as e:
+            logger.error(f"Could not determine parent device: {e}")
+            return False
+
+        parent_device_path = Path(f"/dev/{parent_device}")
+        if not parent_device_path.exists():
+            logger.error(f"Parent device does not exist: {parent_device_path}")
+            return False
+
+        # Extract partition number from device name (e.g., sdb5 -> 5)
+        partition_num = ''.join(filter(str.isdigit, devname_path.name))
+        if not partition_num:
+            logger.error(f"Could not extract partition number from {devname_path.name}")
+            return False
+
+        logger.info(f"Resizing partition {partition_num} on disk {parent_device_path}")
+
+        # Check current partition size before resize
+        try:
+            lsblk_cmd = ["lsblk", "-b", "-n", "-o", "SIZE", str(devname_path)]
+            result = subprocess.run(lsblk_cmd, capture_output=True, text=True, check=True)
+            old_size = int(result.stdout.strip())
+            logger.info(f"Current partition size: {old_size} bytes ({old_size / (1024**3):.2f} GB)")
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.warning(f"Could not get current partition size: {e}")
+            old_size = 0
+
+        # Check if device is currently mounted and unmount if needed
+        mount_point = None
+        try:
+            # Check what's mounted where
+            mount_cmd = ["mount"]
+            result = subprocess.run(mount_cmd, capture_output=True, text=True, check=True)
+            for line in result.stdout.splitlines():
+                if str(devname_path) in line:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        mount_point = parts[2]
+                        logger.info(f"Device {devname_path} is mounted at {mount_point}")
+                        break
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Could not check mount status: {e}")
+
+        # Unmount if mounted
+        if mount_point:
+            logger.info(f"Unmounting {devname_path} from {mount_point}")
+            try:
+                subprocess.run(["sudo", "umount", str(devname_path)], check=True)
+                logger.info("Successfully unmounted device")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to unmount device: {e}")
+                return False
+
+        # First check if there's actually free space available
+        try:
+            fdisk_cmd = ["sudo", "fdisk", "-l", str(parent_device_path)]
+            result = subprocess.run(fdisk_cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Current disk layout:\n{result.stdout}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Could not get disk layout: {e}")
+
+        # Show current partition table
+        try:
+            sfdisk_dump_cmd = ["sudo", "sfdisk", "-d", str(parent_device_path)]
+            result = subprocess.run(sfdisk_dump_cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Current partition table:\n{result.stdout}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Could not dump partition table: {e}")
+
+        # Three-step approach: Fix partition table, Fix GPT, Resize partition
+        disk_operations = [
+            # Step 1: Fix partition table with no-reread flag to avoid device busy errors
+            f"sfdisk -d {parent_device_path} | sfdisk --force --no-reread {parent_device_path}",
+
+            # Step 2: Use parted to fix GPT header (auto-answer "Fix" to the prompt)
+            f"printf 'Fix\\n' | parted {parent_device_path} ---pretend-input-tty print",
+
+            # Step 3: Now resize partition to use 100% of available space
+            f"parted {parent_device_path} --script resizepart {partition_num} 100%",
+
+            # Step 4: Reload partition table properly
+            f"partprobe {parent_device_path}",
+            "udevadm settle",
+            "sleep 2",
+
+            # Step 5: Fix and resize filesystem
+            f"e2fsck -fy {devname_path}",
+            f"resize2fs {devname_path}",
+        ]
+
+        logger.info("Starting partition resize operations...")
+        for i, operation in enumerate(disk_operations, 1):
+            logger.info(f"Step {i}/{len(disk_operations)}: {operation}")
+            try:
+                result = subprocess.run(
+                    ["sudo", "bash", "-c", operation],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                if result.stdout:
+                    logger.debug(f"stdout: {result.stdout.strip()}")
+                if result.stderr:
+                    logger.debug(f"stderr: {result.stderr.strip()}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed at step {i}: {e}")
+                logger.error(f"stdout: {e.stdout}")
+                logger.error(f"stderr: {e.stderr}")
+                return False
+
+        # Check new partition size
+        try:
+            result = subprocess.run(lsblk_cmd, capture_output=True, text=True, check=True)
+            new_size = int(result.stdout.strip())
+            logger.info(f"New partition size: {new_size} bytes ({new_size / (1024**3):.2f} GB)")
+            if new_size > old_size:
+                logger.info(f"Partition successfully resized by {(new_size - old_size) / (1024**3):.2f} GB")
+            else:
+                logger.warning("Partition size did not increase as expected")
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.warning(f"Could not verify new partition size: {e}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Unexpected error during partition resize: {e}")
+        return False
+
+
+def configure_storage(device, wizard_conf):
     uuid = device["UUID"]
     dev_by_uuid = f"/dev/disk/by-uuid/{uuid}"
     if not os.path.exists(dev_by_uuid):
@@ -467,29 +627,23 @@ def configure_storage(device, resize_partition):
 
     mount_point = Path("~").expanduser() / "mnt"
 
+    # Only attempt to resize the storage partition on first setup (not on every boot)
+    # Do this BEFORE checking if mount is needed, since resize requires unmounted device
+    if (device.get("PARTUUID", "").lower() == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01"
+        and not wizard_conf.get("storage_resized", False)):
+        logger.info("First time setup: Attempting to resize Golem storage partition...")
+        resize_success = resize_storage_partition(device)
+        if resize_success:
+            # Mark that resize has been completed successfully
+            wizard_conf["storage_resized"] = True
+            logger.info("Storage partition resize completed and marked as done")
+        else:
+            logger.warning("Storage partition resize failed, but continuing...")
+    elif device.get("PARTUUID", "").lower() == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01":
+        logger.info("Storage partition already resized previously, skipping resize")
+
     if not is_mount_needed(mount_point, dev_by_uuid):
         return
-
-    if (
-        resize_partition
-        and device.get("PARTUUID", None)
-        == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01"
-    ):
-        devname_path = Path(device["DEVNAME"])
-        device = (
-            Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
-        )
-        if device and Path(f"/dev/{device}").exists():
-            disk_operations = [
-                f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 5 /dev/{device}",
-                f"partprobe /dev/{device}",
-                "udevadm settle",
-                f"e2fsck -fy {devname_path}",
-                f"resize2fs {devname_path}",
-            ]
-            subprocess.run(
-                ["sudo", "bash", "-c", "&&".join(disk_operations)], check=True
-            )
 
     mount_point.mkdir(exist_ok=True)
 
@@ -936,15 +1090,11 @@ class WizardDialog:
                     self.device = devices[partition_tag]
 
             self.wizard_conf["storage_partition"] = self.device
-            resize_partition = True
         else:
             self.device = self.wizard_conf["storage_partition"]
-            resize_partition = False
 
         if self.device and self.device.get("DEVNAME", None) != "/dev/notset":
-            configure_storage(
-                device=self.device, resize_partition=resize_partition
-            )
+            configure_storage(device=self.device, wizard_conf=self.wizard_conf)
             # Mount persistent storage directory .local onto ~/.local
             configure_bind_mount(
                 Path("~").expanduser() / "mnt/golem-gpu-live",
@@ -978,7 +1128,7 @@ class WizardDialog:
                     logger.info("Password has been set for golem user (SSH key authentication recommended)")
                 else:
                     self.msgbox(
-                        f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\"
+                        f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
                     )
 
                 # Check network connectivity
