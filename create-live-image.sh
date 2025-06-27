@@ -116,7 +116,4 @@ cat > "${MNTDIR}/golemwz-example.toml" << EOF
 EOF
 
 # Generate BIOS bootable GRUB image
-grub-install \
-    --target=i386-pc \
-    --modules="part_gpt part_msdos fat iso9660" \
-    "${IMG_LOOP}"
+grub-install     --target=i386-pc     --modules="part_gpt part_msdos fat ext2 iso9660"     "${IMG_LOOP}"
