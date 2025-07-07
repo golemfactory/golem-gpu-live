@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+
+# Enable the golemwz service
+systemctl daemon-reload
+systemctl enable golemwz.service
+
+exit 0

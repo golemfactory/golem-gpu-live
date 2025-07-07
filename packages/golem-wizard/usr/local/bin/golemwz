@@ -97,6 +97,12 @@ def parse_args():
         help="Run in non-interactive mode using configuration file values.",
     )
     parser.add_argument(
+        "--config-update",
+        action="store_true",
+        default=False,
+        help="Called during configuration update - restart golemsp service.",
+    )
+    parser.add_argument(
         "--ssh-keys",
         nargs="*",
         default=[],
@@ -871,7 +877,7 @@ def fetch_configuration_from_server(server_url):
         return {}
 
 
-def update_env_file(env_config):
+def update_env_file(env_config, restart_service=False):
     """Updates /mnt/golem.env with variables from the [env] section."""
     if not env_config or not isinstance(env_config, dict):
         return
@@ -897,9 +903,10 @@ def update_env_file(env_config):
         )
         logging.info(f"Successfully updated {env_file_path}")
 
-        # Restart the golemsp service to apply the new environment variables
-        logging.info("Restarting golemsp.service to apply environment changes.")
-        subprocess.run(["sudo", "systemctl", "restart", "golemsp.service"], check=True)
+        # Only restart the golemsp service if this is a configuration update
+        if restart_service:
+            logging.info("Restarting golemsp.service to apply environment changes.")
+            subprocess.run(["sudo", "systemctl", "restart", "golemsp.service"], check=True)
 
     except subprocess.CalledProcessError as e:
         raise WizardError(f"Failed to update env file or restart service: {e}")
@@ -1502,7 +1509,7 @@ if __name__ == "__main__":
             remote_conf = fetch_configuration_from_server(server_url)
             # Update the environment file if the [env] section exists
             if "env" in remote_conf:
-                update_env_file(remote_conf["env"])
+                update_env_file(remote_conf["env"], restart_service=args.config_update)
                 # Remove the env section so it doesn't pollute the main wizard_conf
                 del remote_conf["env"]
             wizard_conf.update(remote_conf)

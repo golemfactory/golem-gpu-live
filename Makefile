@@ -9,8 +9,9 @@ VERSION ?=
 all: image iso
 
 packages:
+	dpkg-deb --build packages/golem-wizard
 	dpkg-deb --build packages/golem-config-updater
-	cp packages/golem-config-updater.deb rootfs/
+	cp packages/golem-wizard.deb packages/golem-config-updater.deb rootfs/
 
 root: packages
 	sudo docker build $(BUILD_ARGS) -t golem-gpu-live -f $(LOCAL_DIR)/rootfs/Dockerfile rootfs
@@ -28,4 +29,5 @@ iso: root
 
 clean:
 	sudo rm -rf $(WORK_DIR) $(TMP_DIR)
-	rm -f packages/golem-config-updater.deb rootfs/golem-config-updater.deb
+	rm -f packages/golem-wizard.deb packages/golem-config-updater.deb
+	rm -f rootfs/golem-wizard.deb rootfs/golem-config-updater.deb

@@ -104,16 +104,9 @@ COPY 20auto-upgrades /etc/apt/apt.conf.d/
 RUN rm -f /etc/apt/apt.conf.d/docker-disable-periodic-update \
           /usr/sbin/policy-rc.d
 
-# Copy GOLEM Wizard and Systemd service
-COPY golemwz.py /usr/local/bin/golemwz
-COPY golemwz-wrapper.sh /usr/local/bin/golemwz-wrapper
-
-COPY golemwz.service /etc/systemd/system
-RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.target.wants/
-
-# Allow golem user to write to /mnt and restart services without password
-RUN echo 'golem ALL=(ALL) NOPASSWD: /usr/bin/tee /mnt/golem.env' >> /etc/sudoers.d/golem-config
-RUN echo 'golem ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart golemsp.service' >> /etc/sudoers.d/golem-config
+# Install GOLEM Wizard package
+COPY golem-wizard.deb /tmp/golem-wizard.deb
+RUN dpkg -i /tmp/golem-wizard.deb && rm /tmp/golem-wizard.deb
 
 COPY golemsp.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants/

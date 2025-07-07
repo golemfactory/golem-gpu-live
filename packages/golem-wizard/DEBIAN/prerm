@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+
+# Disable the golemwz service before removal
+systemctl disable golemwz.service || true
+
+exit 0

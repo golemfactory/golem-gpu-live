@@ -86,7 +86,7 @@ def run_wizard():
     try:
         # Run wizard directly as golem user - no sudo needed since service runs as golem
         result = subprocess.run(
-            [str(WIZARD_SCRIPT), "--non-interactive"],
+            [str(WIZARD_SCRIPT), "--non-interactive", "--config-update"],
             check=True,
             capture_output=True,
             text=True
