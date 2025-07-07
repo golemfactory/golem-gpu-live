@@ -82,6 +82,10 @@ jobs:
           repo: golem-nvidia-kernel
           pattern: ${{ env.golem-nvidia-kernel_tag }}
 
+      - name: "Build local packages"
+        run: |
+          make packages
+
       - name: Import GPG key
         id: gpg_key
         env:
