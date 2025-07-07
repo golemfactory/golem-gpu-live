@@ -56,6 +56,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     parted \
     shim-signed \
     unattended-upgrades \
+    avahi-daemon \
+    libnss-mdns \
     golem-provider \
     golem-nvidia-kernel \
     ya-runtime-vm-nvidia \
@@ -95,6 +97,9 @@ RUN bash -c 'echo > /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.c
 
 # Enable SSH on boot
 RUN ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/
+
+# Enable avahi-daemon for mDNS support
+RUN ln -sf /lib/systemd/system/avahi-daemon.service /etc/systemd/system/multi-user.target.wants/
 
 # Copy fstab
 COPY fstab /etc/

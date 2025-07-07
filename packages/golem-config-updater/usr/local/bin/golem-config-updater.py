@@ -3,8 +3,11 @@ import os
 import subprocess
 import toml
 import logging
+import json
+import socket
 from pathlib import Path
 from urllib import request, error
+from urllib.parse import urlencode
 
 # --- Configuration ---
 LOG_FILE = Path.home() / "golem-updater.log"
@@ -46,13 +49,71 @@ def save_last_etag(etag):
     ETAG_FILE.write_text(etag)
     logging.info(f"Saved new ETag: {etag}")
 
+def get_local_ip():
+    """Gets the local IP address by connecting to a remote server."""
+    try:
+        # Connect to a public DNS server to determine our local IP
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            ip = s.getsockname()[0]
+            logging.info(f"Local IP address: {ip}")
+            return ip
+    except Exception as e:
+        logging.error(f"Failed to get local IP: {e}")
+        return None
+
+def get_node_name():
+    """Gets the node name from ya-provider config."""
+    try:
+        result = subprocess.run(
+            ["ya-provider", "config", "get", "--json"],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        config = json.loads(result.stdout)
+        node_name = config.get("node_name")
+        if node_name:
+            logging.info(f"Node name: {node_name}")
+            return node_name
+        else:
+            logging.warning("No node_name found in ya-provider config")
+            return None
+    except subprocess.CalledProcessError as e:
+        logging.error(f"Failed to get ya-provider config: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse ya-provider config JSON: {e}")
+        return None
+    except Exception as e:
+        logging.error(f"Unexpected error getting node name: {e}")
+        return None
+
 def check_for_updates(url, last_etag):
     """
     Checks the remote URL for changes using ETag.
     Returns the new ETag if changed, None otherwise.
     """
-    logging.info(f"Checking for updates at {url}...")
-    req = request.Request(url, method="HEAD")
+    # Get machine information
+    local_ip = get_local_ip()
+    node_name = get_node_name()
+
+    # Build URL with query parameters
+    params = {}
+    if local_ip:
+        params['ip'] = local_ip
+    if node_name:
+        params['node'] = node_name
+
+    if params:
+        separator = '&' if '?' in url else '?'
+        query_string = urlencode(params)
+        full_url = f"{url}{separator}{query_string}"
+    else:
+        full_url = url
+
+    logging.info(f"Checking for updates at {full_url}...")
+    req = request.Request(full_url, method="HEAD")
     if last_etag:
         req.add_header("If-None-Match", last_etag)
 
