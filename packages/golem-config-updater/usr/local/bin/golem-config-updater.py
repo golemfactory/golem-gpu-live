@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import os
 import subprocess
 import toml
 import logging
@@ -9,9 +10,9 @@ from urllib import request, error
 LOG_FILE = Path.home() / "golem-updater.log"
 CONFIG_FILE = Path.home() / ".golemwz.toml"
 ETAG_FILE = Path.home() / ".golem_updater.etag"
-# Assumes golemwz.py is in the same directory
+# Assumes golemwz is in the same directory
 WIZARD_SCRIPT_PATH = Path(__file__).parent.resolve()
-WIZARD_SCRIPT = WIZARD_SCRIPT_PATH / "golemwz.py"
+WIZARD_SCRIPT = WIZARD_SCRIPT_PATH / "golemwz"
 
 # --- Setup Logging ---
 logging.basicConfig(
@@ -80,10 +81,12 @@ def check_for_updates(url, last_etag):
 def run_wizard():
     """Executes the main wizard script to apply the new configuration."""
     logging.info(f"Running configuration wizard: {WIZARD_SCRIPT}")
+    logging.info(f"Config file exists: {CONFIG_FILE.exists()}")
+
     try:
-        # Use sudo because the wizard performs system-level configuration
+        # Run wizard directly as golem user - no sudo needed since service runs as golem
         result = subprocess.run(
-            ["sudo", str(WIZARD_SCRIPT), "--non-interactive"],
+            [str(WIZARD_SCRIPT), "--non-interactive"],
             check=True,
             capture_output=True,
             text=True
@@ -102,14 +105,11 @@ def run_wizard():
 
 
 def main():
-    # The script is run from /root, but the config is in the golem user's home.
-    # This is a simplification for the live image environment.
-    # A more robust solution would discover the golem user's home directory.
+    # Script now runs as golem user, so config files are in the correct home directory
     global CONFIG_FILE, ETAG_FILE, LOG_FILE
-    golem_home = Path("/home/golem")
-    CONFIG_FILE = golem_home / ".golemwz.toml"
-    ETAG_FILE = golem_home / ".golem_updater.etag"
-    LOG_FILE = golem_home / "golem-updater.log"
+    CONFIG_FILE = Path.home() / ".golemwz.toml"
+    ETAG_FILE = Path.home() / ".golem_updater.etag"
+    LOG_FILE = Path.home() / "golem-updater.log"
 
     config = get_config()
     if not config:

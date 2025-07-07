@@ -8,7 +8,11 @@ VERSION ?=
 
 all: image iso
 
-root:
+packages:
+	dpkg-deb --build packages/golem-config-updater
+	cp packages/golem-config-updater.deb rootfs/
+
+root: packages
 	sudo docker build $(BUILD_ARGS) -t golem-gpu-live -f $(LOCAL_DIR)/rootfs/Dockerfile rootfs
 	sudo ./get-merged-rootfs.sh golem-gpu-live $(TMP_DIR) $(WORK_DIR)
 	# FIXME:
@@ -24,3 +28,4 @@ iso: root
 
 clean:
 	sudo rm -rf $(WORK_DIR) $(TMP_DIR)
+	rm -f packages/golem-config-updater.deb rootfs/golem-config-updater.deb

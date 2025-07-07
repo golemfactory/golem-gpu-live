@@ -1,0 +1,9 @@
+[Unit]
+Description=Golem Provider Configuration Updater
+
+[Service]
+Type=oneshot
+# Run as the golem user, same as golemwz.service
+User=golem
+Group=golem
+ExecStart=/usr/local/bin/golem-config-updater.py

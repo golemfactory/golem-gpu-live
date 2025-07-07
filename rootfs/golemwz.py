@@ -887,15 +887,21 @@ def update_env_file(env_config):
     logging.info(f"New content:\n{content}")
 
     try:
-        # This script is run with sudo, so it can write to /mnt
-        env_file_path.write_text(content + "\n")
+        # Use sudo with tee to write to /mnt/golem.env as regular user
+        process = subprocess.run(
+            ["sudo", "tee", str(env_file_path)],
+            input=content + "\n",
+            text=True,
+            capture_output=True,
+            check=True
+        )
         logging.info(f"Successfully updated {env_file_path}")
 
         # Restart the golemsp service to apply the new environment variables
         logging.info("Restarting golemsp.service to apply environment changes.")
         subprocess.run(["sudo", "systemctl", "restart", "golemsp.service"], check=True)
 
-    except (IOError, subprocess.CalledProcessError) as e:
+    except subprocess.CalledProcessError as e:
         raise WizardError(f"Failed to update env file or restart service: {e}")
 
 

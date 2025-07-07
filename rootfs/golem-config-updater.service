@@ -1,9 +1,0 @@
-[Unit]
-Description=Golem Provider Configuration Updater
-
-[Service]
-Type=oneshot
-# Run the script as the root user, as it needs to execute sudo for the wizard
-User=root
-# The script itself will handle logging to the golem user's home directory
-ExecStart=/golem-config-updater.py

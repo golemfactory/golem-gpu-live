@@ -111,14 +111,16 @@ COPY golemwz-wrapper.sh /usr/local/bin/golemwz-wrapper
 COPY golemwz.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.target.wants/
 
+# Allow golem user to write to /mnt and restart services without password
+RUN echo 'golem ALL=(ALL) NOPASSWD: /usr/bin/tee /mnt/golem.env' >> /etc/sudoers.d/golem-config
+RUN echo 'golem ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart golemsp.service' >> /etc/sudoers.d/golem-config
+
 COPY golemsp.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants/
 
-# Copy GOLEM auto-updater and Systemd timer
-COPY golem-config-updater.py /usr/local/bin/golem-config-updater.py
-COPY golem-config-updater.service /etc/systemd/system
-COPY golem-config-updater.timer /etc/systemd/system
-RUN ln -s /etc/systemd/system/golem-config-updater.timer /etc/systemd/system/timers.target.wants/
+# Install GOLEM auto-updater package
+COPY golem-config-updater.deb /tmp/golem-config-updater.deb
+RUN dpkg -i /tmp/golem-config-updater.deb && rm /tmp/golem-config-updater.deb
 
 # Setup motd
 RUN bash -c "rm -rf /etc/update-motd.d/*"

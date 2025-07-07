@@ -1,0 +1,9 @@
+#!/bin/bash
+set -e
+
+# Enable and start the timer
+systemctl daemon-reload
+systemctl enable golem-config-updater.timer
+systemctl start golem-config-updater.timer
+
+exit 0
