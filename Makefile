@@ -6,6 +6,8 @@ TMP_DIR ?= $(LOCAL_DIR)/tmp
 BUILD_ARGS ?=
 VERSION ?=
 
+.PHONY: packages clean all root image iso
+
 all: image iso
 
 packages:
