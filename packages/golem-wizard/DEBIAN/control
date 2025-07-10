@@ -1,5 +1,5 @@
 Package: golem-wizard
-Version: 1.2.0
+Version: 1.3.0
 Section: utils
 Priority: optional
 Architecture: all
@@ -7,4 +7,4 @@ Depends: python3, python3-dialog, python3-toml, systemd
 Maintainer: Golem Factory <contact@golem.network>
 Description: Golem Provider Configuration Wizard
  Interactive wizard for configuring Golem GPU provider settings
- including GPU passthrough, storage setup, and network configuration.
+ including GPU passthrough, storage setup, network configuration, and domain whitelist management.

@@ -1386,6 +1386,59 @@ class WizardDialog:
             except subprocess.CalledProcessError as e:
                 raise WizardError(f"Failed to configure preset: {str(e)}.")
 
+    def wizard_configure_whitelist(self):
+        logging.info("Configure whitelist.")
+        if not self.wizard_conf.get("whitelist_configured", False):
+            whitelist_config = self.wizard_conf.get("whitelist", {})
+
+            if not whitelist_config:
+                logger.info("No whitelist configuration found, skipping.")
+                return
+
+            env = get_env()
+
+            try:
+                for name, config in whitelist_config.items():
+                    logger.info(f"Configuring whitelist entry: {name}")
+
+                    if isinstance(config, dict) and "pattern" in config:
+                        # Single pattern with regex type
+                        pattern = config["pattern"]
+                        pattern_type = config.get("type", "regex")
+
+                        whitelist_cmd = [
+                            "ya-provider", "whitelist", "add",
+                            "-t", pattern_type,
+                            "-p", pattern
+                        ]
+
+                        logger.info(f"Running: {' '.join(whitelist_cmd)}")
+                        subprocess.run(whitelist_cmd, check=True, env=env)
+
+                    elif isinstance(config, list):
+                        # Multiple patterns with strict type
+                        patterns = config
+                        pattern_type = "strict"
+
+                        whitelist_cmd = [
+                            "ya-provider", "whitelist", "add",
+                            "-t", pattern_type,
+                            "-p"
+                        ] + patterns
+
+                        logger.info(f"Running: {' '.join(whitelist_cmd)}")
+                        subprocess.run(whitelist_cmd, check=True, env=env)
+
+                    else:
+                        logger.warning(f"Invalid whitelist configuration format for {name}: {config}")
+                        continue
+
+                self.wizard_conf["whitelist_configured"] = True
+                logger.info("Whitelist configuration completed successfully.")
+
+            except subprocess.CalledProcessError as e:
+                raise WizardError(f"Failed to configure whitelist: {str(e)}")
+
     def wizard_configure_vfio(self):
         # Add warning about a possible screen freeze
         logging.info(MSG_FREEZE)
@@ -1454,6 +1507,9 @@ class WizardDialog:
 
         # CONFIGURE PRESET
         self.wizard_configure_preset()
+
+        # CONFIGURE WHITELIST
+        self.wizard_configure_whitelist()
 
         # VFIO
         self.wizard_configure_vfio()
