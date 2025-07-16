@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+
+# Stop and disable the timer
+systemctl stop golem-config-updater.timer || true
+systemctl disable golem-config-updater.timer || true
+
+exit 0

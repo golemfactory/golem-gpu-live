@@ -90,6 +90,29 @@ def parse_args():
         default=False,
         help="Don't save running configuration.",
     )
+    parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        default=False,
+        help="Run in non-interactive mode using configuration file values.",
+    )
+    parser.add_argument(
+        "--config-update",
+        action="store_true",
+        default=False,
+        help="Called during configuration update - restart golemsp service.",
+    )
+    parser.add_argument(
+        "--ssh-keys",
+        nargs="*",
+        default=[],
+        help="SSH public keys to install for remote access.",
+    )
+    parser.add_argument(
+        "--configuration-server",
+        default="",
+        help="URL to fetch additional configuration from.",
+    )
     return parser.parse_args()
 
 
@@ -442,7 +465,167 @@ def mount_conf_storage():
         raise WizardError(f"Failed to mount configuration partition: {str(e)}")
 
 
-def configure_storage(device, resize_partition):
+def resize_storage_partition(device):
+    """
+    Resize the Golem storage partition to use all available space.
+
+    Args:
+        device: Device info dict containing DEVNAME, PARTUUID, etc.
+
+    Returns:
+        bool: True if resize was successful or not needed, False on error
+    """
+    try:
+        # Check if this is the Golem storage partition
+        expected_partuuid = "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01"
+        actual_partuuid = device.get("PARTUUID", "").lower()
+
+        logger.info(f"Checking resize for device {device.get('DEVNAME')}")
+        logger.info(f"Expected PARTUUID: {expected_partuuid}")
+        logger.info(f"Actual PARTUUID: {actual_partuuid}")
+
+        if actual_partuuid != expected_partuuid.lower():
+            logger.info("Not the Golem storage partition, skipping resize")
+            return True
+
+        devname_path = Path(device["DEVNAME"])
+        if not devname_path.exists():
+            logger.error(f"Device path does not exist: {devname_path}")
+            return False
+
+        # Get the parent disk device (e.g., /dev/sdb5 -> sdb)
+        try:
+            parent_device = Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
+        except (OSError, FileNotFoundError) as e:
+            logger.error(f"Could not determine parent device: {e}")
+            return False
+
+        parent_device_path = Path(f"/dev/{parent_device}")
+        if not parent_device_path.exists():
+            logger.error(f"Parent device does not exist: {parent_device_path}")
+            return False
+
+        # Extract partition number from device name (e.g., sdb5 -> 5)
+        partition_num = ''.join(filter(str.isdigit, devname_path.name))
+        if not partition_num:
+            logger.error(f"Could not extract partition number from {devname_path.name}")
+            return False
+
+        logger.info(f"Resizing partition {partition_num} on disk {parent_device_path}")
+
+        # Check current partition size before resize
+        try:
+            lsblk_cmd = ["lsblk", "-b", "-n", "-o", "SIZE", str(devname_path)]
+            result = subprocess.run(lsblk_cmd, capture_output=True, text=True, check=True)
+            old_size = int(result.stdout.strip())
+            logger.info(f"Current partition size: {old_size} bytes ({old_size / (1024**3):.2f} GB)")
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.warning(f"Could not get current partition size: {e}")
+            old_size = 0
+
+        # Check if device is currently mounted and unmount if needed
+        mount_point = None
+        try:
+            # Check what's mounted where
+            mount_cmd = ["mount"]
+            result = subprocess.run(mount_cmd, capture_output=True, text=True, check=True)
+            for line in result.stdout.splitlines():
+                if str(devname_path) in line:
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        mount_point = parts[2]
+                        logger.info(f"Device {devname_path} is mounted at {mount_point}")
+                        break
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Could not check mount status: {e}")
+
+        # Unmount if mounted
+        if mount_point:
+            logger.info(f"Unmounting {devname_path} from {mount_point}")
+            try:
+                subprocess.run(["sudo", "umount", str(devname_path)], check=True)
+                logger.info("Successfully unmounted device")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to unmount device: {e}")
+                return False
+
+        # First check if there's actually free space available
+        try:
+            fdisk_cmd = ["sudo", "fdisk", "-l", str(parent_device_path)]
+            result = subprocess.run(fdisk_cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Current disk layout:\n{result.stdout}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Could not get disk layout: {e}")
+
+        # Show current partition table
+        try:
+            sfdisk_dump_cmd = ["sudo", "sfdisk", "-d", str(parent_device_path)]
+            result = subprocess.run(sfdisk_dump_cmd, capture_output=True, text=True, check=True)
+            logger.info(f"Current partition table:\n{result.stdout}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Could not dump partition table: {e}")
+
+        # Three-step approach: Fix partition table, Fix GPT, Resize partition
+        disk_operations = [
+            # Step 1: Fix partition table with no-reread flag to avoid device busy errors
+            f"sfdisk -d {parent_device_path} | sfdisk --force --no-reread {parent_device_path}",
+
+            # Step 2: Use parted to fix GPT header (auto-answer "Fix" to the prompt)
+            f"printf 'Fix\\n' | parted {parent_device_path} ---pretend-input-tty print",
+
+            # Step 3: Now resize partition to use 100% of available space
+            f"parted {parent_device_path} --script resizepart {partition_num} 100%",
+
+            # Step 4: Reload partition table properly
+            f"partprobe {parent_device_path}",
+            "udevadm settle",
+            "sleep 2",
+
+            # Step 5: Fix and resize filesystem
+            f"e2fsck -fy {devname_path}",
+            f"resize2fs {devname_path}",
+        ]
+
+        logger.info("Starting partition resize operations...")
+        for i, operation in enumerate(disk_operations, 1):
+            logger.info(f"Step {i}/{len(disk_operations)}: {operation}")
+            try:
+                result = subprocess.run(
+                    ["sudo", "bash", "-c", operation],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                if result.stdout:
+                    logger.debug(f"stdout: {result.stdout.strip()}")
+                if result.stderr:
+                    logger.debug(f"stderr: {result.stderr.strip()}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed at step {i}: {e}")
+                logger.error(f"stdout: {e.stdout}")
+                logger.error(f"stderr: {e.stderr}")
+                return False
+
+        # Check new partition size
+        try:
+            result = subprocess.run(lsblk_cmd, capture_output=True, text=True, check=True)
+            new_size = int(result.stdout.strip())
+            logger.info(f"New partition size: {new_size} bytes ({new_size / (1024**3):.2f} GB)")
+            if new_size > old_size:
+                logger.info(f"Partition successfully resized by {(new_size - old_size) / (1024**3):.2f} GB")
+            else:
+                logger.warning("Partition size did not increase as expected")
+        except (subprocess.CalledProcessError, ValueError) as e:
+            logger.warning(f"Could not verify new partition size: {e}")
+
+        return True
+
+    except Exception as e:
+        logger.error(f"Unexpected error during partition resize: {e}")
+        return False
+
+
+def configure_storage(device, wizard_conf):
     uuid = device["UUID"]
     dev_by_uuid = f"/dev/disk/by-uuid/{uuid}"
     if not os.path.exists(dev_by_uuid):
@@ -450,29 +633,23 @@ def configure_storage(device, resize_partition):
 
     mount_point = Path("~").expanduser() / "mnt"
 
+    # Only attempt to resize the storage partition on first setup (not on every boot)
+    # Do this BEFORE checking if mount is needed, since resize requires unmounted device
+    if (device.get("PARTUUID", "").lower() == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01"
+        and not wizard_conf.get("storage_resized", False)):
+        logger.info("First time setup: Attempting to resize Golem storage partition...")
+        resize_success = resize_storage_partition(device)
+        if resize_success:
+            # Mark that resize has been completed successfully
+            wizard_conf["storage_resized"] = True
+            logger.info("Storage partition resize completed and marked as done")
+        else:
+            logger.warning("Storage partition resize failed, but continuing...")
+    elif device.get("PARTUUID", "").lower() == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01":
+        logger.info("Storage partition already resized previously, skipping resize")
+
     if not is_mount_needed(mount_point, dev_by_uuid):
         return
-
-    if (
-        resize_partition
-        and device.get("PARTUUID", None)
-        == "9b06e23f-74bb-4c49-b83d-d3b0c0c2bb01"
-    ):
-        devname_path = Path(device["DEVNAME"])
-        device = (
-            Path(f"/sys/class/block/{devname_path.name}").readlink().parent.name
-        )
-        if device and Path(f"/dev/{device}").exists():
-            disk_operations = [
-                f"echo ',+' | sfdisk --no-reread --no-tell-kernel -q -N 5 /dev/{device}",
-                f"partprobe /dev/{device}",
-                "udevadm settle",
-                f"e2fsck -fy {devname_path}",
-                f"resize2fs {devname_path}",
-            ]
-            subprocess.run(
-                ["sudo", "bash", "-c", "&&".join(disk_operations)], check=True
-            )
 
     mount_point.mkdir(exist_ok=True)
 
@@ -653,121 +830,202 @@ def bind_vfio(slots):
         )
 
 
-class WizardDialog:
-    dialog = Dialog(dialog="dialog", pass_args_via_file=False)
+def install_ssh_keys(ssh_keys):
+    """Install SSH public keys for the golem user."""
+    if not ssh_keys:
+        return
 
-    @classmethod
+    ssh_dir = Path.home() / ".ssh"
+    ssh_dir.mkdir(mode=0o700, exist_ok=True)
+
+    authorized_keys_path = ssh_dir / "authorized_keys"
+
+    # Read existing keys if file exists
+    existing_keys = set()
+    if authorized_keys_path.exists():
+        existing_keys = set(authorized_keys_path.read_text().strip().split('\n'))
+        existing_keys.discard('')  # Remove empty strings
+
+    # Add new keys
+    new_keys = set(ssh_keys)
+    all_keys = existing_keys | new_keys
+
+    # Write all keys to file
+    authorized_keys_path.write_text('\n'.join(sorted(all_keys)) + '\n')
+    authorized_keys_path.chmod(0o600)
+
+    logger.info(f"Installed {len(new_keys)} SSH keys")
+
+
+def fetch_configuration_from_server(server_url):
+    """Fetch additional configuration from remote server."""
+    if not server_url:
+        return {}
+
+    try:
+        import urllib.request
+        import urllib.error
+
+        logger.info(f"Fetching configuration from {server_url}")
+
+        with urllib.request.urlopen(server_url, timeout=30) as response:
+            config_data = response.read().decode('utf-8')
+            return toml.loads(config_data)
+
+    except (urllib.error.URLError, toml.TomlDecodeError) as e:
+        logger.error(f"Failed to fetch configuration from server: {e}")
+        return {}
+
+
+def update_env_file(env_config, restart_service=False):
+    """Updates /mnt/golem.env with variables from the [env] section."""
+    if not env_config or not isinstance(env_config, dict):
+        return
+
+    env_file_path = Path("/mnt/golem.env")
+    lines = []
+    for key, value in env_config.items():
+        # Ensure keys are uppercase, as is common for env vars
+        lines.append(f"{key.upper()}={value}")
+
+    content = "\n".join(lines)
+    logging.info(f"Updating environment file: {env_file_path}")
+    logging.info(f"New content:\n{content}")
+
+    try:
+        # Use sudo with tee to write to /mnt/golem.env as regular user
+        process = subprocess.run(
+            ["sudo", "tee", str(env_file_path)],
+            input=content + "\n",
+            text=True,
+            capture_output=True,
+            check=True
+        )
+        logging.info(f"Successfully updated {env_file_path}")
+
+        # Only restart the golemsp service if this is a configuration update
+        if restart_service:
+            logging.info("Restarting golemsp.service to apply environment changes.")
+            subprocess.run(["sudo", "systemctl", "restart", "golemsp.service"], check=True)
+
+    except subprocess.CalledProcessError as e:
+        raise WizardError(f"Failed to update env file or restart service: {e}")
+
+
+class WizardDialog:
+
     def __init__(
-        cls,
+        self,
         wizard_conf: dict,
+        args,
         show_welcome: bool = False,
         storage_only: bool = False,
         no_save: bool = False,
+        non_interactive: bool = False,
     ):
-        cls.wizard_conf = wizard_conf
+        self.wizard_conf = wizard_conf
+        self.args = args
+        self.dialog = Dialog(dialog="dialog", pass_args_via_file=False)
 
-        cls.dialog.set_background_title("GOLEM Provider Wizard")
-        if show_welcome:
-            cls.msgbox("Welcome to GOLEM Provider configuration wizard!")
+        self.dialog.set_background_title("GOLEM Provider Wizard")
+        if show_welcome and not non_interactive:
+            self.msgbox("Welcome to GOLEM Provider configuration wizard!")
 
-        cls.storage_only = storage_only
-        cls.no_save = no_save
+        self.storage_only = storage_only
+        self.no_save = no_save
+        self.non_interactive = non_interactive
 
-        cls.device = None
-        cls.glm_account = None
-        cls.glm_per_hour = None
-        cls.duration_price = None
-        cls.selected_gpus = None
+        self.device = None
+        self.glm_account = None
+        self.glm_per_hour = None
+        self.duration_price = None
+        self.selected_gpus = None
 
-    @classmethod
-    def _auto_height(cls, width, text):
+    def _auto_height(self, width, text):
         _max = max(8, 5 + len(wrap(text, width=width)))  # Min of 8 rows
         _min = min(22, _max)  # Max of 22 rows
         return _min
 
-    @classmethod
-    def yesno(cls, text, **info):
+    def yesno(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
-        code = cls.dialog.yesno(text, **default)
+        code = self.dialog.yesno(text, **default)
 
-        if code == cls.dialog.OK:
+        if code == self.dialog.OK:
             return True
-        elif code == cls.dialog.CANCEL:
+        elif code == self.dialog.CANCEL:
             return False
-        elif code == cls.dialog.ESC:
+        elif code == self.dialog.ESC:
             sys.exit("Escape key pressed. Exiting.")
 
-    @classmethod
-    def inputbox(cls, text, **info):
+    def inputbox(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        code, input_content = cls.dialog.inputbox(text, **default)
-        if code == cls.dialog.OK:
+        code, input_content = self.dialog.inputbox(text, **default)
+        if code == self.dialog.OK:
             return input_content
-        elif code == cls.dialog.CANCEL:
+        elif code == self.dialog.CANCEL:
             return None
-        elif code == cls.dialog.ESC:
+        elif code == self.dialog.ESC:
             sys.exit("Escape key pressed. Exiting.")
 
-    @classmethod
-    def msgbox(cls, text, **info):
+    def msgbox(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.msgbox(text, **default)
+        return self.dialog.msgbox(text, **default)
 
-    @classmethod
-    def menu(cls, text, **info):
+    def menu(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.menu(text, **default)
+        return self.dialog.menu(text, **default)
 
-    @classmethod
-    def checklist(cls, text, **info):
+    def checklist(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.checklist(text, **default)
+        return self.dialog.checklist(text, **default)
 
-    @classmethod
-    def pause(cls, text, **info):
+    def pause(self, text, **info):
         default = {"colors": True, "width": 72, "height": 8}
         default.update(info)
 
         if not default["height"]:
-            default["height"] = cls._auto_height(
-                default["width"], default["text"]
+            default["height"] = self._auto_height(
+                default["width"], default.get("text", text)
             )
 
-        return cls.dialog.pause(text, **default)
+        return self.dialog.pause(text, **default)
 
     def wizard_check_terms(self):
         logging.info("Check accepted license terms.")
         if not self.wizard_conf.get("accepted_terms", False):
+            if self.non_interactive:
+                raise WizardError("Terms must be accepted in configuration file for non-interactive mode")
+
             if not self.yesno(
                 "By installing & running this software you declare that you have read, understood and hereby accept the "
                 "disclaimer and privacy warning found at 'https://glm.zone/GPUProviderTC'."
@@ -802,41 +1060,54 @@ class WizardDialog:
                 begin_choices = [not_configure]
                 info = devices.values()
 
-            partition_choices = (
-                begin_choices
-                + [
-                    (dev["DEVNAME"], get_partition_description(dev))
-                    for dev in info
-                ]
-                + end_choices
-            )
-
-            code, partition_tag = self.menu(
-                "Select a storage partition:",
-                choices=partition_choices,
-                height=64,
-                width=128,
-            )
-
-            if not partition_tag or partition_tag == "-":
-                if not self.yesno(
-                    "No persistent storage defined. Would you like to continue?"
-                ):
-                    return
-                self.device = {"DEVNAME": "/dev/notset"}
+            if self.non_interactive:
+                # In non-interactive mode, automatically select Golem storage partition
+                if default_partition:
+                    partition_tag = default_partition
+                    self.device = devices[partition_tag]
+                    logger.info(f"Automatically selected Golem storage partition: {partition_tag}")
+                else:
+                    # If no Golem storage found, try to use the first available partition
+                    if devices:
+                        partition_tag = list(devices.keys())[0]
+                        self.device = devices[partition_tag]
+                        logger.info(f"No Golem storage found, using first available partition: {partition_tag}")
+                    else:
+                        # No storage devices available
+                        raise WizardError("No storage partitions available for non-interactive mode")
             else:
-                self.device = devices[partition_tag]
+                # Interactive mode - show menu
+                partition_choices = (
+                    begin_choices
+                    + [
+                        (dev["DEVNAME"], get_partition_description(dev))
+                        for dev in info
+                    ]
+                    + end_choices
+                )
+
+                code, partition_tag = self.menu(
+                    "Select a storage partition:",
+                    choices=partition_choices,
+                    height=64,
+                    width=128,
+                )
+
+                if not partition_tag or partition_tag == "-":
+                    if not self.yesno(
+                        "No persistent storage defined. Would you like to continue?"
+                    ):
+                        return
+                    self.device = {"DEVNAME": "/dev/notset"}
+                else:
+                    self.device = devices[partition_tag]
 
             self.wizard_conf["storage_partition"] = self.device
-            resize_partition = True
         else:
             self.device = self.wizard_conf["storage_partition"]
-            resize_partition = False
 
         if self.device and self.device.get("DEVNAME", None) != "/dev/notset":
-            configure_storage(
-                device=self.device, resize_partition=resize_partition
-            )
+            configure_storage(device=self.device, wizard_conf=self.wizard_conf)
             # Mount persistent storage directory .local onto ~/.local
             configure_bind_mount(
                 Path("~").expanduser() / "mnt/golem-gpu-live",
@@ -864,43 +1135,65 @@ class WizardDialog:
                     capture_output=True,
                     input=f"{password}\n{password}".encode(),
                 )
-                self.msgbox(
-                    f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
-                )
-
-                # Setup timeout for letting nm-online detecting activation
-                cur = 0
-                timeout = 30
-                self.dialog.gauge_start(
-                    "Progress: 0%", title="Waiting for network activation..."
-                )
-                process = subprocess.Popen(
-                    ["nm-online", "--timeout", str(timeout)],
-                    stdout=subprocess.DEVNULL,
-                )
-                while cur <= timeout:
-                    if process.poll() is not None:
-                        self.dialog.gauge_update(
-                            100, "Progress: 100%", update_text=True
-                        )
-                        break
-                    update = int(100 * cur / timeout)
-                    self.dialog.gauge_update(
-                        update,
-                        "Progress: {0}%".format(update),
-                        update_text=True,
+                if self.non_interactive:
+                    # In non-interactive mode, log the password instead of showing dialog
+                    logger.info(f"Generated random password for 'golem' user: {password}")
+                    logger.info("Password has been set for golem user (SSH key authentication recommended)")
+                else:
+                    self.msgbox(
+                        f"'golem' user has generated randomly password: {password}\n\n /!\ PLEASE SAVE IT AS IT WILL NEVER BE SHOWN AGAIN /!\\"
                     )
-                    time.sleep(1)
-                    cur += 1
-                self.dialog.gauge_stop()
 
-                # We rely on nm-online saying it has found activated connections
-                if process.poll() == 0 and get_ip_addresses():
+                # Check network connectivity
+                if self.non_interactive:
+                    # In non-interactive mode, check network without progress display
+                    logger.info("Checking network connectivity...")
+                    process = subprocess.run(
+                        ["nm-online", "--timeout", "30"],
+                        capture_output=True,
+                        text=True
+                    )
+                else:
+                    # Interactive mode - show progress gauge
+                    cur = 0
+                    timeout = 30
+                    self.dialog.gauge_start(
+                        "Progress: 0%", title="Waiting for network activation..."
+                    )
+                    process = subprocess.Popen(
+                        ["nm-online", "--timeout", str(timeout)],
+                        stdout=subprocess.DEVNULL,
+                    )
+                    while cur <= timeout:
+                        if process.poll() is not None:
+                            self.dialog.gauge_update(
+                                100, "Progress: 100%", update_text=True
+                            )
+                            break
+                        update = int(100 * cur / timeout)
+                        self.dialog.gauge_update(
+                            update,
+                            "Progress: {0}%".format(update),
+                            update_text=True,
+                        )
+                        time.sleep(1)
+                        cur += 1
+                    self.dialog.gauge_stop()
+
+                # Report network status
+                if (process.returncode if hasattr(process, 'returncode') else process.poll()) == 0 and get_ip_addresses():
                     addresses_str = "\n- " + "\n- ".join(get_ip_addresses())
                     msg = f"Available IP addresses to connect to SSH for this host:{addresses_str}"
+                    if self.non_interactive:
+                        logger.info(f"Network connectivity established. {msg.replace(chr(10), ' ')}")
+                    else:
+                        self.msgbox(msg, height=8)
                 else:
                     msg = "Cannot determine available IP addresses. Please check documentation."
-                self.msgbox(msg, height=8)
+                    if self.non_interactive:
+                        logger.warning(msg)
+                    else:
+                        self.msgbox(msg, height=8)
                 self.wizard_conf["is_password_set"] = True
             except subprocess.CalledProcessError as e:
                 raise WizardError(f"Failed to set 'golem' password: {str(e)}.")
@@ -908,29 +1201,37 @@ class WizardDialog:
     def wizard_configure_glm(self):
         logging.info("Configure GLM values.")
         self.glm_account = self.wizard_conf.get("glm_account", None)
-        while not self.glm_account:
-            user_input = self.inputbox(
-                "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):",
-                width=96,
-            )
-            if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
-                self.glm_account = user_input
-                break
-            elif user_input and user_input == "/notset":
-                self.glm_account = "0xDaa04647e8ecb616801F9bE89712771F6D291a0C"
-                break
+
+        if self.non_interactive:
+            if not self.glm_account:
+                raise WizardError("glm_account must be provided in configuration file for non-interactive mode")
+        else:
+            while not self.glm_account:
+                user_input = self.inputbox(
+                    "Account address for payments (e.g. 0xDaa04647e8ecb616801F9bE89712771F6D291a0C):",
+                    width=96,
+                )
+                if user_input and re.match("^0x[a-fA-F0-9]{40}$", user_input):
+                    self.glm_account = user_input
+                    break
+                elif user_input and user_input == "/notset":
+                    self.glm_account = "0xDaa04647e8ecb616801F9bE89712771F6D291a0C"
+                    break
+                else:
+                    self.msgbox(
+                        "Invalid account address provided. Please ensure account address contains 40 hexadecimal digits prefixed with '0x'."
+                    )
+
+        self.glm_per_hour = self.wizard_conf.get("glm_per_hour", None)
+        if not self.glm_per_hour:
+            if self.non_interactive:
+                self.glm_per_hour = DURATION_GLM_PER_HOUR_DEFAULT
             else:
-                self.msgbox(
-                    "Invalid account address provided. Please ensure account address contains 40 hexadecimal digits prefixed with '0x'."
+                self.glm_per_hour = (
+                    self.inputbox("GLM per hour:", init=str(DURATION_GLM_PER_HOUR_DEFAULT))
+                    or DURATION_GLM_PER_HOUR_DEFAULT
                 )
 
-        self.glm_per_hour = (
-            self.wizard_conf.get("glm_per_hour", None)
-            or self.inputbox(
-                "GLM per hour:", init=str(DURATION_GLM_PER_HOUR_DEFAULT)
-            )
-            or DURATION_GLM_PER_HOUR_DEFAULT
-        )
         try:
             self.duration_price = float(self.glm_per_hour) / 3600.0
         except ValueError as e:
@@ -943,51 +1244,72 @@ class WizardDialog:
         logging.info("Configure GPUs.")
         if not self.wizard_conf.get("gpus", None):
             gpus, bad_isolation_groups = select_compatible_gpus(
-                allow_pci_bridge=not args.no_relax_gpu_isolation,
-                insecure=args.insecure,
+                allow_pci_bridge=not self.args.no_relax_gpu_isolation,
+                insecure=self.args.insecure,
             )
+
+            # Handle bad isolation groups
             if bad_isolation_groups:
                 for device, iommu_group_devices in bad_isolation_groups:
-                    msg = f"Cannot select '{device.description}'\n\nIOMMU Group '{device.iommu_group}' has bad isolation:\n\n"
+                    msg = f"Cannot select '{device.description}' - IOMMU Group '{device.iommu_group}' has bad isolation:"
                     for iommu_device in iommu_group_devices:
-                        msg += f"  - {iommu_device.slot} {iommu_device.description}\n"
-                    self.msgbox(msg, width=640, height=32)
+                        msg += f" {iommu_device.slot} {iommu_device.description};"
+                    if self.non_interactive:
+                        logger.warning(msg)
+                    else:
+                        self.msgbox(msg, width=640, height=32)
+
             if not gpus:
                 raise WizardError("No compatible GPU available.")
 
-            gpu_choices = [
-                (slot, gpu["description"], False) for slot, gpu in gpus.items()
-            ]
-
-            while not self.selected_gpus:
-                code, gpu_tags = self.checklist(
-                    "Select at least one GPU (use spacebar for selection):",
-                    choices=gpu_choices,
-                    width=128,
-                    height=32,
-                )
-
-                selected_gpus = []
-                for gpu_tag in gpu_tags:
-                    selected_gpus.append(gpus[gpu_tag])
-
-                # sort GPUs by slot
+            if self.non_interactive:
+                # In non-interactive mode, automatically select all compatible GPUs
+                selected_gpus = list(gpus.values())
                 selected_gpus = sorted(selected_gpus, key=lambda x: x["slot"])
+                self.selected_gpus = selected_gpus
 
-                if selected_gpus:
-                    msg = f"Do you confirm selected GPUs?\n\n"
-                    for gpu in selected_gpus:
-                        msg += f"  - {gpu['slot']} {gpu['description']}\n"
-                    if not self.yesno(msg, width=640, height=32):
-                        selected_gpus = None
+                # Log the automatically selected GPUs
+                logger.info("Automatically selected all compatible GPUs:")
+                for gpu in selected_gpus:
+                    logger.info(f"  - {gpu['slot']} {gpu['description']}")
 
-                if not code or not selected_gpus:
-                    self.msgbox("Please select at least one GPU. Use spacebar for selection.")
-                else:
-                    self.selected_gpus = selected_gpus
+                logger.info(MSG_FREEZE)
+            else:
+                # Interactive mode - show GPU selection dialog
+                gpu_choices = [
+                    (slot, gpu["description"], False) for slot, gpu in gpus.items()
+                ]
+
+                while not self.selected_gpus:
+                    code, gpu_tags = self.checklist(
+                        "Select at least one GPU (use spacebar for selection):",
+                        choices=gpu_choices,
+                        width=128,
+                        height=32,
+                    )
+
+                    selected_gpus = []
+                    for gpu_tag in gpu_tags:
+                        selected_gpus.append(gpus[gpu_tag])
+
+                    # sort GPUs by slot
+                    selected_gpus = sorted(selected_gpus, key=lambda x: x["slot"])
+
+                    if selected_gpus:
+                        msg = f"Do you confirm selected GPUs?\n\n"
+                        for gpu in selected_gpus:
+                            msg += f"  - {gpu['slot']} {gpu['description']}\n"
+                        if not self.yesno(msg, width=640, height=32):
+                            selected_gpus = None
+
+                    if not code or not selected_gpus:
+                        self.msgbox("Please select at least one GPU. Use spacebar for selection.")
+                    else:
+                        self.selected_gpus = selected_gpus
+
+                self.msgbox(MSG_FREEZE)
 
             self.wizard_conf["gpus"] = self.selected_gpus
-            self.msgbox(MSG_FREEZE)
         else:
             self.selected_gpus = self.wizard_conf["gpus"]
 
@@ -1037,11 +1359,21 @@ class WizardDialog:
     def wizard_configure_preset(self):
         logging.info("Configure preset.")
         if not self.wizard_conf.get("preset_configured", False):
-            glm_node_name = self.wizard_conf.get(
-                "glm_node_name", None
-            ) or self.inputbox(
-                "Node name (leave empty for automatic generated name):"
-            )
+            glm_node_name = self.wizard_conf.get("glm_node_name", None)
+
+            # Only prompt for node name in interactive mode if not already configured
+            if not glm_node_name and not self.non_interactive:
+                glm_node_name = self.inputbox(
+                    "Node name (leave empty for automatic generated name):"
+                )
+
+            # In non-interactive mode, use configured value or None (for auto-generated name)
+            if self.non_interactive:
+                if glm_node_name:
+                    logger.info(f"Using configured node name: {glm_node_name}")
+                else:
+                    logger.info("No node name configured, will use auto-generated name")
+
             try:
                 configure_preset(
                     runtime_id="vm-nvidia",
@@ -1054,12 +1386,65 @@ class WizardDialog:
             except subprocess.CalledProcessError as e:
                 raise WizardError(f"Failed to configure preset: {str(e)}.")
 
+    def wizard_configure_whitelist(self):
+        logging.info("Configure whitelist.")
+        if not self.wizard_conf.get("whitelist_configured", False):
+            whitelist_config = self.wizard_conf.get("whitelist", {})
+
+            if not whitelist_config:
+                logger.info("No whitelist configuration found, skipping.")
+                return
+
+            env = get_env()
+
+            try:
+                for name, config in whitelist_config.items():
+                    logger.info(f"Configuring whitelist entry: {name}")
+
+                    if isinstance(config, dict) and "pattern" in config:
+                        # Single pattern with regex type
+                        pattern = config["pattern"]
+                        pattern_type = config.get("type", "regex")
+
+                        whitelist_cmd = [
+                            "ya-provider", "whitelist", "add",
+                            "-t", pattern_type,
+                            "-p", pattern
+                        ]
+
+                        logger.info(f"Running: {' '.join(whitelist_cmd)}")
+                        subprocess.run(whitelist_cmd, check=True, env=env)
+
+                    elif isinstance(config, list):
+                        # Multiple patterns with strict type
+                        patterns = config
+                        pattern_type = "strict"
+
+                        whitelist_cmd = [
+                            "ya-provider", "whitelist", "add",
+                            "-t", pattern_type,
+                            "-p"
+                        ] + patterns
+
+                        logger.info(f"Running: {' '.join(whitelist_cmd)}")
+                        subprocess.run(whitelist_cmd, check=True, env=env)
+
+                    else:
+                        logger.warning(f"Invalid whitelist configuration format for {name}: {config}")
+                        continue
+
+                self.wizard_conf["whitelist_configured"] = True
+                logger.info("Whitelist configuration completed successfully.")
+
+            except subprocess.CalledProcessError as e:
+                raise WizardError(f"Failed to configure whitelist: {str(e)}")
+
     def wizard_configure_vfio(self):
         # Add warning about a possible screen freeze
         logging.info(MSG_FREEZE)
 
         logging.info("Configure passthrough.")
-        if not args.no_passthrough:
+        if not self.args.no_passthrough:
             try:
                 all_devices = []
                 for gpu in self.selected_gpus:
@@ -1123,11 +1508,15 @@ class WizardDialog:
         # CONFIGURE PRESET
         self.wizard_configure_preset()
 
+        # CONFIGURE WHITELIST
+        self.wizard_configure_whitelist()
+
         # VFIO
         self.wizard_configure_vfio()
 
         # Save running config
         self.wizard_save_config()
+
 
 
 if __name__ == "__main__":
@@ -1168,7 +1557,27 @@ if __name__ == "__main__":
             wizard_conf["glm_account"] = args.glm_account
 
         if args.glm_per_hour:
-            wizard_conf["glm_per_hour"] = args.storage_partition
+            wizard_conf["glm_per_hour"] = args.glm_per_hour
+
+        # Process configuration from remote server if specified
+        if args.configuration_server or wizard_conf.get("configuration_server"):
+            server_url = args.configuration_server or wizard_conf.get("configuration_server")
+            remote_conf = fetch_configuration_from_server(server_url)
+            # Update the environment file if the [env] section exists
+            if "env" in remote_conf:
+                update_env_file(remote_conf["env"], restart_service=args.config_update)
+                # Remove the env section so it doesn't pollute the main wizard_conf
+                del remote_conf["env"]
+            wizard_conf.update(remote_conf)
+
+        # Override with command line arguments for new options
+        if args.non_interactive or wizard_conf.get("non_interactive_install", False):
+            wizard_conf["non_interactive_install"] = True
+
+        if args.ssh_keys or wizard_conf.get("ssh_keys"):
+            ssh_keys = args.ssh_keys or wizard_conf.get("ssh_keys", [])
+            install_ssh_keys(ssh_keys)
+            logger.info("SSH keys installed")
 
         system_configured = all(
             [
@@ -1180,11 +1589,16 @@ if __name__ == "__main__":
                 wizard_conf.get("gpus", None),
             ]
         )
+
+        non_interactive_mode = wizard_conf.get("non_interactive_install", False)
+
         wizard_dialog = WizardDialog(
             wizard_conf=wizard_conf,
-            show_welcome=not system_configured,
+            args=args,
+            show_welcome=not system_configured and not non_interactive_mode,
             storage_only=args.storage_only,
             no_save=args.no_save,
+            non_interactive=non_interactive_mode,
         )
         wizard_dialog.run()
     except KeyboardInterrupt:

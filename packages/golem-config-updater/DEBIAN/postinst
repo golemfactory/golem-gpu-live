@@ -1,0 +1,12 @@
+#!/bin/bash
+set -e
+
+# Enable and start the timer
+# Only reload daemon if systemd is running (not during Docker build)
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+    systemctl start golem-config-updater.timer
+fi
+systemctl enable golem-config-updater.timer
+
+exit 0

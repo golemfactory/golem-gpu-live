@@ -1,0 +1,3 @@
+# Allow golem user to write to /mnt and restart services without password
+golem ALL=(ALL) NOPASSWD: /usr/bin/tee /mnt/golem.env
+golem ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart golemsp.service

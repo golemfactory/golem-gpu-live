@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Golem configuration updater every 15 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Unit=golem-config-updater.service
+
+[Install]
+WantedBy=timers.target

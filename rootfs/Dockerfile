@@ -56,6 +56,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     parted \
     shim-signed \
     unattended-upgrades \
+    avahi-daemon \
+    libnss-mdns \
     golem-provider \
     golem-nvidia-kernel \
     ya-runtime-vm-nvidia \
@@ -96,6 +98,9 @@ RUN bash -c 'echo > /usr/lib/NetworkManager/conf.d/10-globally-managed-devices.c
 # Enable SSH on boot
 RUN ln -sf /lib/systemd/system/ssh.service /etc/systemd/system/multi-user.target.wants/
 
+# Enable avahi-daemon for mDNS support
+RUN ln -sf /lib/systemd/system/avahi-daemon.service /etc/systemd/system/multi-user.target.wants/
+
 # Copy fstab
 COPY fstab /etc/
 
@@ -104,15 +109,16 @@ COPY 20auto-upgrades /etc/apt/apt.conf.d/
 RUN rm -f /etc/apt/apt.conf.d/docker-disable-periodic-update \
           /usr/sbin/policy-rc.d
 
-# Copy GOLEM Wizard and Systemd service
-COPY golemwz.py /usr/local/bin/golemwz
-COPY golemwz-wrapper.sh /usr/local/bin/golemwz-wrapper
-
-COPY golemwz.service /etc/systemd/system
-RUN ln -s /etc/systemd/system/golemwz.service /etc/systemd/system/multi-user.target.wants/
+# Install GOLEM Wizard package
+COPY golem-wizard.deb /tmp/golem-wizard.deb
+RUN dpkg -i /tmp/golem-wizard.deb && rm /tmp/golem-wizard.deb
 
 COPY golemsp.service /etc/systemd/system
 RUN ln -s /etc/systemd/system/golemsp.service /etc/systemd/system/multi-user.target.wants/
+
+# Install GOLEM auto-updater package
+COPY golem-config-updater.deb /tmp/golem-config-updater.deb
+RUN dpkg -i /tmp/golem-config-updater.deb && rm /tmp/golem-config-updater.deb
 
 # Setup motd
 RUN bash -c "rm -rf /etc/update-motd.d/*"

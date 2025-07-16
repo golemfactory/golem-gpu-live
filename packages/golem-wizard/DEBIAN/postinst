@@ -1,0 +1,17 @@
+#!/bin/bash
+set -e
+
+# Fix ownership and permissions for sudoers file
+if [ -f /etc/sudoers.d/golem-config ]; then
+    chown root:root /etc/sudoers.d/golem-config
+    chmod 440 /etc/sudoers.d/golem-config
+fi
+
+# Enable the golemwz service
+# Only reload daemon if systemd is running (not during Docker build)
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload
+fi
+systemctl enable golemwz.service
+
+exit 0
