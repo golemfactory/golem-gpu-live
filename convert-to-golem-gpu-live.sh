@@ -476,6 +476,55 @@ configure_services() {
     info "System services configured successfully"
 }
 
+setup_golemsp_service() {
+    info "Setting up Golem provider service..."
+
+    local service_file="/etc/systemd/system/golemsp.service"
+    local service_link="/etc/systemd/system/multi-user.target.wants/golemsp.service"
+
+    if [[ "$DRY_RUN" == "true" ]]; then
+        info "Would create golemsp.service and enable it"
+        return 0
+    fi
+
+    backup_file "$service_file"
+
+    # Create golemsp.service file
+    cat > "$service_file" << 'EOF'
+[Unit]
+Description=GOLEM SP Boot
+Wants=network-online.target
+After=network-online.target golemwz.service
+ConditionKernelCommandLine=!skip_autostart
+
+[Service]
+ExecStart=/usr/bin/golemsp run
+Restart=always
+Type=simple
+User=golem
+Group=golem
+Environment=HOME=/home/golem
+Environment=YAGNA_METRICS_GROUP=GolemGpuLive
+EnvironmentFile=-/mnt/golem.env
+LimitMEMLOCK=infinity
+PIDFile=/home/golem/.local/share/ya-provider/ya-provider.pid
+
+[Install]
+WantedBy=default.target
+EOF
+
+    chmod 644 "$service_file"
+
+    # Enable the service by creating symlink
+    mkdir -p "$(dirname "$service_link")"
+    ln -sf "$service_file" "$service_link" 2>/dev/null || warn "Failed to create service symlink"
+
+    # Also enable it through systemctl for good measure
+    systemctl enable golemsp.service || warn "Failed to enable golemsp service"
+
+    info "Golem provider service configured successfully"
+}
+
 configure_grub() {
     info "Configuring GRUB bootloader..."
 
@@ -654,6 +703,7 @@ verify_installation() {
         "/etc/modprobe.d/vfio.conf"
         "/etc/udev/rules.d/50-vfio.rules"
         "/etc/systemd/system/getty@tty1.service.d/override.conf"
+        "/etc/systemd/system/golemsp.service"
         "/etc/initramfs-tools/conf.d/noresume.conf"
         "/etc/apt/sources.list.d/golem.list"
         "/etc/apt/trusted.gpg.d/golem.asc"
@@ -837,6 +887,7 @@ main() {
 
     current_step=$((current_step + 1)); progress $current_step $total_steps "Configuring services"
     configure_services
+    setup_golemsp_service
 
     current_step=$((current_step + 1)); progress $current_step $total_steps "Updating GRUB configuration"
     configure_grub
