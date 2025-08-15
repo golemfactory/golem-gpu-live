@@ -453,6 +453,24 @@ def fix_paths(runtime_files_dir):
 
 
 def mount_conf_storage():
+    # Check if this is a converted installation (has /opt/golem-config)
+    converted_config_path = Path("/opt/golem-config")
+    if converted_config_path.exists():
+        logger.info("Detected converted installation - using /opt/golem-config instead of partition")
+        # Create symlink from /mnt to /opt/golem-config for compatibility
+        mnt_path = Path("/mnt")
+        if not mnt_path.exists():
+            mnt_path.mkdir(exist_ok=True)
+        # If /mnt is not already pointing to /opt/golem-config, make it so
+        if not mnt_path.is_symlink() or mnt_path.readlink() != converted_config_path:
+            if mnt_path.exists() and not mnt_path.is_symlink():
+                # Remove existing directory if it's not a symlink
+                subprocess.run(["sudo", "rmdir", str(mnt_path)], capture_output=True)
+            if not mnt_path.exists():
+                subprocess.run(["sudo", "ln", "-sf", str(converted_config_path), str(mnt_path)], check=True)
+        return
+
+    # Original partition-based logic for live USB/ISO
     dev_partlabel = "/dev/disk/by-partlabel/Golem\\x20conf\\x20storage"
 
     if not is_mount_needed("/mnt", dev_partlabel):
@@ -1531,11 +1549,10 @@ if __name__ == "__main__":
 
         wizard_conf = {}
 
-        # If exists, the first boot configuration file path provided in Golem conf partition
-        firstboot_wizard_conf_path = Path("/mnt/golemwz.toml")
-
-        # Wizard configuration file path
+        # Configuration file paths in order of preference
         wizard_conf_path = Path("~").expanduser().resolve() / ".golemwz.toml"
+        firstboot_wizard_conf_path = Path("/mnt/golemwz.toml")
+        converted_install_conf_path = Path("/opt/golem-config/golemwz.toml")
 
         try:
             conf_to_load = None
@@ -1543,6 +1560,9 @@ if __name__ == "__main__":
                 conf_to_load = wizard_conf_path
             elif firstboot_wizard_conf_path.exists():
                 conf_to_load = firstboot_wizard_conf_path
+            elif converted_install_conf_path.exists():
+                conf_to_load = converted_install_conf_path
+                logger.info(f"Using converted installation config: {converted_install_conf_path}")
             if conf_to_load:
                 wizard_conf.update(toml.loads(conf_to_load.read_text()))
         except toml.TomlDecodeError as e:
