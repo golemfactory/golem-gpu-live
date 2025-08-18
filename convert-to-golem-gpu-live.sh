@@ -452,8 +452,12 @@ configure_network_manager() {
         # Enable NetworkManager to manage all devices
         sed -i 's/managed=false/managed=true/g' "$nm_conf" 2>/dev/null || warn "Failed to update NetworkManager.conf"
 
-        # Clear globally managed devices configuration
-        echo > "$nm_global_conf"
+        # Clear globally managed devices configuration if it exists
+        if [[ -f "$nm_global_conf" ]]; then
+            echo > "$nm_global_conf"
+        else
+            debug "File $nm_global_conf does not exist, skipping"
+        fi
     fi
 
     info "NetworkManager configuration completed"
