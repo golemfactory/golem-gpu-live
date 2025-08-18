@@ -1055,6 +1055,14 @@ class WizardDialog:
 
     def wizard_configure_storage(self):
         logging.info("Configure storage.")
+
+        # Check if this is a converted installation - skip storage configuration
+        if Path("/opt/golem-config").exists():
+            logging.info("Detected converted installation - skipping storage configuration")
+            self.wizard_conf["storage_partition"] = {"DEVNAME": "/dev/notset"}
+            self.device = {"DEVNAME": "/dev/notset"}
+            return
+
         if not self.wizard_conf.get("storage_partition", None):
             devices = get_filtered_blkid_output()
 
