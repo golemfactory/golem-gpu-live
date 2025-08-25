@@ -31,6 +31,7 @@ PCI_HOST_BRIDGE_CLASS_ID = "0600"
 PCI_BUS_BRIDGE_CLASS_ID = "0604"
 
 PCI_VGA_CLASS_ID = "0300"
+PCI_3D_CONTROLLER_CLASS_ID = "0302"
 
 RELAXED_PCI_CLASSES = [PCI_HOST_BRIDGE_CLASS_ID, PCI_BUS_BRIDGE_CLASS_ID]
 
@@ -157,7 +158,7 @@ class PCIDevice:
         return f"PCIDevice(slot={self.slot}, class_code={self.class_code}, vendor={self.vendor}, device={self.device}, iommu_group={self.iommu_group})"
 
     def is_vga(self):
-        return self.class_code == PCI_VGA_CLASS_ID
+        return self.class_code in [PCI_VGA_CLASS_ID, PCI_3D_CONTROLLER_CLASS_ID]
 
 
 class PCIParser:
@@ -352,7 +353,10 @@ def is_mount_needed(directory, expected_device_path):
 
 def select_compatible_gpus(allow_pci_bridge=True, insecure=False):
     parser = PCIParser()
-    gpu_devices = parser.get_devices(class_code=PCI_VGA_CLASS_ID, vendor="10de")
+    # Get both VGA controllers (0300) and 3D controllers (0302) from NVIDIA
+    vga_devices = parser.get_devices(class_code=PCI_VGA_CLASS_ID, vendor="10de")
+    controller_3d_devices = parser.get_devices(class_code=PCI_3D_CONTROLLER_CLASS_ID, vendor="10de")
+    gpu_devices = list(vga_devices) + list(controller_3d_devices)
 
     gpus = {}
     bad_isolation_groups = []
