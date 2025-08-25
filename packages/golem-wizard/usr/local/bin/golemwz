@@ -1174,11 +1174,15 @@ class WizardDialog:
                 if self.non_interactive:
                     # In non-interactive mode, check network without progress display
                     logger.info("Checking network connectivity...")
-                    process = subprocess.run(
-                        ["nm-online", "--timeout", "30"],
-                        capture_output=True,
-                        text=True
-                    )
+                    try:
+                        process = subprocess.run(
+                            ["nm-online", "--timeout", "30"],
+                            capture_output=True,
+                            text=True
+                        )
+                    except FileNotFoundError:
+                        logger.warning("nm-online command not found, skipping network check")
+                        process = None
                 else:
                     # Interactive mode - show progress gauge
                     cur = 0
@@ -1186,11 +1190,16 @@ class WizardDialog:
                     self.dialog.gauge_start(
                         "Progress: 0%", title="Waiting for network activation..."
                     )
-                    process = subprocess.Popen(
-                        ["nm-online", "--timeout", str(timeout)],
-                        stdout=subprocess.DEVNULL,
-                    )
-                    while cur <= timeout:
+                    try:
+                        process = subprocess.Popen(
+                            ["nm-online", "--timeout", str(timeout)],
+                            stdout=subprocess.DEVNULL,
+                        )
+                    except FileNotFoundError:
+                        logger.warning("nm-online command not found, skipping network check")
+                        self.dialog.gauge_update(100, "Progress: 100% (nm-online not available)", update_text=True)
+                        process = None
+                    while cur <= timeout and process is not None:
                         if process.poll() is not None:
                             self.dialog.gauge_update(
                                 100, "Progress: 100%", update_text=True

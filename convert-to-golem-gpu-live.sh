@@ -50,6 +50,7 @@ readonly SYSTEM_PACKAGES=(
     "dialog"
     "curl"
     "wget"
+    "network-manager"
 )
 
 readonly GOLEM_PACKAGES=(
