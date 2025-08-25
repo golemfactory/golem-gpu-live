@@ -1520,7 +1520,10 @@ class WizardDialog:
 
     def run(self):
         if not Path("/sys/firmware/efi").exists():
-            self.msgbox("System is not started in UEFI mode!")
+            if self.non_interactive:
+                logger.warning("System is not started in UEFI mode!")
+            else:
+                self.msgbox("System is not started in UEFI mode!")
 
         # TERMS OF USE
         self.wizard_check_terms()
