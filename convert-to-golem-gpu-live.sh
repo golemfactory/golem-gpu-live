@@ -425,6 +425,20 @@ EOF
         chmod 644 "$vfio_conf"
     fi
 
+    # Create modules configuration to ensure VFIO modules are loaded at boot
+    local modules_conf="/etc/modules-load.d/vfio.conf"
+    backup_file "$modules_conf"
+
+    if [[ "$DRY_RUN" != "true" ]]; then
+        cat > "$modules_conf" << 'EOF'
+# VFIO modules for GPU passthrough
+vfio
+vfio_pci
+vfio_iommu_type1
+EOF
+        chmod 644 "$modules_conf"
+    fi
+
     # Create udev rules for VFIO permissions
     local vfio_rules="/etc/udev/rules.d/50-vfio.rules"
     backup_file "$vfio_rules"
@@ -437,7 +451,7 @@ EOF
         chmod 644 "$vfio_rules"
     fi
 
-    info "VFIO configuration completed"
+    info "VFIO configuration completed (modules will load after reboot)"
 }
 
 configure_network_manager() {
@@ -706,6 +720,7 @@ verify_installation() {
     # Check if configuration files exist
     local config_files=(
         "/etc/modprobe.d/vfio.conf"
+        "/etc/modules-load.d/vfio.conf"
         "/etc/udev/rules.d/50-vfio.rules"
         "/etc/systemd/system/getty@tty1.service.d/override.conf"
         "/etc/systemd/system/golemsp.service"
