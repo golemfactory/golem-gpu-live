@@ -29,13 +29,30 @@ logging.basicConfig(
 
 def get_config():
     """Loads the local golemwz.toml configuration."""
-    if not CONFIG_FILE.exists():
-        logging.warning(f"Configuration file not found: {CONFIG_FILE}")
+    # Check for configuration files in order of preference
+    config_paths = [
+        CONFIG_FILE,  # ~/.golemwz.toml (user config)
+        Path("/mnt/golemwz.toml"),  # mounted partition config
+        Path("/opt/golem-config/golemwz.toml")  # converted installation config
+    ]
+
+    config_file_to_use = None
+    for config_path in config_paths:
+        if config_path.exists():
+            config_file_to_use = config_path
+            break
+
+    if not config_file_to_use:
+        logging.warning(f"No configuration file found in: {[str(p) for p in config_paths]}")
         return None
+
+    if config_file_to_use != CONFIG_FILE:
+        logging.info(f"Using configuration file: {config_file_to_use}")
+
     try:
-        return toml.load(CONFIG_FILE)
+        return toml.load(config_file_to_use)
     except toml.TomlDecodeError as e:
-        logging.error(f"Error decoding {CONFIG_FILE}: {e}")
+        logging.error(f"Error decoding {config_file_to_use}: {e}")
         return None
 
 def get_last_etag():
