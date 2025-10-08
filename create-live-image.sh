@@ -30,7 +30,7 @@ rm -rf "${WORKDIR}/golem-gpu-live-*.img"
 # Trap for cleanup mount points
 trap "cleanup ${MNTDIR}" 0 1 2 3 6 15
 
-truncate -s 16G "${IMG}"
+truncate -s 15G "${IMG}"
 
 # have static UUIDs to make partition table reproducible
 /usr/sbin/sfdisk "$IMG" <<EOF || exit 1
