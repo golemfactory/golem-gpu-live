@@ -5,6 +5,85 @@
 The **golem-gpu-live** project allows you to create a live image for a GOLEM provider with NVIDIA GPU.
 This README provides instructions on how to set up the necessary dependencies and create the image using the provided Makefile.
 
+## Architecture & Codebase Overview
+
+### Technology Stack
+
+- **Shell (Bash)** — Build scripts for creating live images, ISOs, and extracting root filesystems from Docker
+- **Python 3** — Interactive setup wizard (`golemwz`) and configuration auto-updater (`golem-config-updater.py`), using `python3-dialog` for the TUI, `python3-toml`/`python3-tomli-w` for config parsing
+- **TypeScript (Deno)** — S3 metadata updater (`update-s3-meta.ts`) for managing image versions on AWS S3
+- **Docker** — Builds the Ubuntu Jammy root filesystem with all Golem provider packages pre-installed
+- **Debian packaging** — Custom `.deb` packages for the wizard and config updater
+- **GRUB** — Bootloader supporting both EFI and BIOS boot
+- **Systemd** — Service management for the wizard, Golem provider daemon, and config updater timer
+- **QEMU/KVM + VFIO** — GPU passthrough from host to virtual machines via IOMMU
+
+### Directory Structure
+
+```
+golem-gpu-live/
+├── Makefile                       # Build orchestration (packages → rootfs → image/ISO)
+├── version.sh                     # Maps git tags/branches to release channels
+├── create-live-image.sh           # Creates a 15 GB GPT disk image with 5 partitions
+├── get-merged-rootfs.sh           # Extracts Docker image layers into a rootfs directory
+├── get-rootfs.sh                  # Retrieves pre-built rootfs
+├── convert-to-golem-gpu-live.sh   # Converts an existing installation to a live image
+├── update-s3-meta.ts              # Deno script to update image metadata on S3
+├── rootfs/                        # Docker build context for the root filesystem
+│   ├── Dockerfile                 # Ubuntu Jammy base with all Golem packages
+│   ├── vfio.conf                  # Blacklists nouveau, loads VFIO kernel modules
+│   ├── 50-vfio.rules              # udev rules for VFIO device permissions
+│   ├── golemsp.service            # Systemd service for the Golem provider daemon
+│   ├── golemwz.toml               # Example first-boot configuration
+│   ├── grub                       # GRUB defaults (IOMMU, VFIO kernel params)
+│   └── *.asc                      # GPG keys for the Golem APT repository
+├── packages/                      # Custom Debian packages
+│   ├── golem-wizard/              # Interactive setup wizard
+│   │   ├── DEBIAN/                # Package metadata (control, postinst, prerm)
+│   │   ├── usr/local/bin/golemwz  # Main Python wizard script
+│   │   └── lib/systemd/system/    # golemwz.service unit file
+│   └── golem-config-updater/      # Periodic configuration auto-updater
+│       ├── DEBIAN/                # Package metadata
+│       ├── usr/local/bin/         # golem-config-updater.py
+│       └── lib/systemd/           # Timer and service unit files
+├── live/                          # GRUB configs for the live boot menu
+│   ├── grub.cfg                   # BIOS boot menu
+│   └── grub-efi.cfg              # EFI boot menu
+└── .github/
+    ├── workflows/
+    │   ├── build.yml              # CI: builds image and uploads to S3
+    │   └── repository.yml         # CI: updates APT repository on GitHub Pages
+    └── actions/
+        └── fetch-release-deb/     # Reusable action to fetch Golem .deb packages
+```
+
+### Build Pipeline
+
+The `Makefile` defines the build pipeline:
+
+1. **`make packages`** — Builds `golem-wizard.deb` and `golem-config-updater.deb` from the `packages/` directory and copies them into `rootfs/`
+2. **`make root`** — Runs `docker build` using `rootfs/Dockerfile` to create an Ubuntu Jammy image with all dependencies, then extracts the filesystem layers via `get-merged-rootfs.sh`
+3. **`make image`** — Creates a 15 GB GPT disk image (`create-live-image.sh`) with five partitions: EFI, BIOS boot, config storage (1 MB), root filesystem (10 GB), and persistent user storage
+4. **`make iso`** — Creates a bootable ISO from the rootfs
+
+### Key Components
+
+**Golem Wizard (`packages/golem-wizard/usr/local/bin/golemwz`)** — A Python 3 TUI application using `python3-dialog` that runs on first boot via a systemd service. It walks the user through: accepting terms of use, selecting persistent storage, setting a password, configuring network, entering GLM wallet and pricing details, detecting and selecting NVIDIA GPUs, validating IOMMU isolation, configuring the `vm-nvidia` runtime, and attaching GPU devices to VFIO for passthrough.
+
+**Config Updater (`packages/golem-config-updater/usr/local/bin/golem-config-updater.py`)** — A Python 3 daemon triggered by a systemd timer that periodically checks for remote configuration changes and applies them by re-running the wizard with updated parameters.
+
+**Root Filesystem (`rootfs/Dockerfile`)** — Builds on Ubuntu Jammy and installs the Linux kernel, live-boot, systemd, NetworkManager, SSH, QEMU/KVM, and Golem-specific packages (`golem-provider`, `golem-nvidia-kernel`, `ya-runtime-vm-nvidia`, `ya-runtime-wasi-cli`, `ya-installer-resources`). It configures VFIO for GPU passthrough, creates the `golem` user, and enables all required services.
+
+**S3 Meta Updater (`update-s3-meta.ts`)** — A Deno/TypeScript script that scans the S3 bucket for published images, calculates SHA-256 checksums, and maintains a `meta.json` index organized by release channel (unstable, testing, release).
+
+### Boot & Runtime Flow
+
+1. The machine boots from USB using GRUB, offering two options: **Default** (auto-runs the wizard) or **NO AUTOSTART** (drops to a TTY login)
+2. In default mode, `golemwz.service` starts the wizard on TTY6
+3. The wizard guides the user through GPU provider configuration and writes settings to `~/.golemwz.toml`
+4. After successful configuration, `golemsp.service` starts the Golem provider daemon (`golemsp`), which connects to the Golem Network and begins accepting GPU compute tasks
+5. The `golem-config-updater` timer periodically checks for configuration updates and applies them automatically
+
 ## Prerequisites
 
 Before attempting to use a GOLEM live image, make sure you have the following hardware requirements in place:
